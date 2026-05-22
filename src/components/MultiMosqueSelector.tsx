@@ -140,7 +140,6 @@ export const MultiMosqueSelector: React.FC = () => {
               </div>
               
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <AuthMenu />
                 <button
                   onClick={() => setIsFormOpen(!isFormOpen)}
                   className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-sans text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md active:bg-emerald-700 select-none cursor-pointer whitespace-nowrap"
@@ -149,6 +148,9 @@ export const MultiMosqueSelector: React.FC = () => {
                   <Plus className="w-4 h-4" />
                   <span>Register Mosque</span>
                 </button>
+                <AuthMenu 
+                  onEnterAdminConsole={() => setIsFormOpen(!isFormOpen)}
+                />
               </div>
             </div>
 

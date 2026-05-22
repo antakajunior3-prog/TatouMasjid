@@ -13,11 +13,31 @@ import {
   ChevronDown, 
   CheckCircle, 
   Sparkles,
-  Info
+  Info,
+  MapPin,
+  Tv,
+  Settings,
+  HelpCircle,
+  Database,
+  Home,
+  Layers,
+  Phone,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { VISUAL_THEMES } from './ThemeStyles';
 
-export const AuthMenu: React.FC = () => {
+export interface AuthMenuProps {
+  onSelectAllMosques?: () => void;
+  onEnterTVMode?: () => void;
+  onEnterAdminConsole?: () => void;
+}
+
+export const AuthMenu: React.FC<AuthMenuProps> = ({
+  onSelectAllMosques,
+  onEnterTVMode,
+  onEnterAdminConsole
+}) => {
   const { 
     adminUser, 
     isFirebaseActive,
@@ -25,7 +45,9 @@ export const AuthMenu: React.FC = () => {
     registerWithEmailAndPass, 
     loginWithEmailAndPass, 
     logout,
-    isAdmin
+    isAdmin,
+    data,
+    mosqueSlug
   } = useDashboard();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -148,29 +170,40 @@ export const AuthMenu: React.FC = () => {
     return user.email ? user.email.slice(0, 2).toUpperCase() : 'M';
   };
 
+  const activeThemeName = data?.config?.themeId 
+    ? VISUAL_THEMES[data.config.themeId]?.name 
+    : 'Onyx Editorial Theme';
+
   return (
-    <div className="relative font-sans" ref={dropdownRef}>
-      {adminUser ? (
-        /* Logged In State Profile Bubble Dropdown Menu trigger */
-        <div>
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 h-10 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 rounded-xl transition-all cursor-pointer text-left focus:outline-none select-none"
-            id="auth-profile-trigger"
-          >
-            {adminUser.photoURL ? (
-              <img 
-                src={adminUser.photoURL} 
-                alt="Display" 
-                className="w-6 h-6 rounded-full border border-emerald-500" 
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-emerald-600 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold text-white uppercase font-mono">
-                {getInitials(adminUser)}
-              </div>
-            )}
-            <div className="hidden md:block">
+    <div className="relative font-sans text-neutral-200" ref={dropdownRef}>
+      {/* Universal Trigger Button: Sign In / Profile with Chevron */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-1.5 h-10 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 rounded-xl transition-all cursor-pointer text-left focus:outline-none select-none"
+        id="auth-profile-trigger"
+      >
+        {adminUser ? (
+          adminUser.photoURL ? (
+            <img 
+              src={adminUser.photoURL} 
+              alt="Display" 
+              className="w-6 h-6 rounded-full border border-emerald-500" 
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-emerald-600 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold text-white uppercase font-mono">
+              {getInitials(adminUser)}
+            </div>
+          )
+        ) : (
+          <div className="w-6 h-6 rounded-full bg-neutral-800 border border-white/10 flex items-center justify-center text-stone-400">
+            <User className="w-3.5 h-3.5" />
+          </div>
+        )}
+        
+        <div className="hidden md:block">
+          {adminUser ? (
+            <>
               <div className="text-[10px] font-bold text-white leading-tight max-w-[110px] truncate">
                 {adminUser.displayName || adminUser.email?.split('@')[0]}
               </div>
@@ -178,22 +211,36 @@ export const AuthMenu: React.FC = () => {
                 <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
                 <span>{isAdmin ? 'System Admin' : 'Logged In'}</span>
               </div>
-            </div>
-            <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-          </button>
+            </>
+          ) : (
+            <>
+              <div className="text-[10px] font-bold text-white leading-tight">
+                Guest Portals
+              </div>
+              <div className="text-[8px] text-stone-400 font-mono leading-tight uppercase flex items-center gap-0.5 mt-0.5">
+                <Lock className="w-2.5 h-2.5 text-amber-500" />
+                <span>Sign In / Options</span>
+              </div>
+            </>
+          )}
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
 
-          {/* Quick Dropdown Options Panel */}
-          <AnimatePresence>
-            {isOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                className="absolute right-0 mt-2 w-64 rounded-xl bg-stone-900 border border-white/10 shadow-2xl z-50 p-4 divide-y divide-white/5 space-y-3"
-                id="auth-profile-dropdown"
-              >
-                {/* Header User profile card */}
-                <div className="flex gap-3 items-center pb-2">
+      {/* Expanded Multi-Section Quick Settings & Auth Options Panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="absolute right-0 mt-2 w-72 rounded-2xl bg-stone-900 border border-white/10 shadow-2xl z-50 p-4 divide-y divide-white/5 space-y-4 max-h-[90vh] overflow-y-auto"
+            id="auth-profile-dropdown"
+          >
+            {/* 1. Header & Identity Portal */}
+            <div>
+              {adminUser ? (
+                <div className="flex gap-3 items-center pb-1">
                   {adminUser.photoURL ? (
                     <img 
                       src={adminUser.photoURL} 
@@ -214,48 +261,178 @@ export const AuthMenu: React.FC = () => {
                       {adminUser.email}
                     </p>
                     <span className="inline-flex items-center gap-1 text-[8px] font-mono font-bold text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 uppercase tracking-widest mt-1.5">
-                      <Sparkles className="w-2.5 h-2.5" />
+                      <Sparkles className="w-2.5 h-2.5 animate-spin" />
                       Verified Owner
                     </span>
                   </div>
                 </div>
-
-                {/* Info and helper status */}
-                <div className="pt-3 pb-1 text-[10px] text-stone-400 leading-relaxed font-sans">
-                  <p className="m-0">
-                    You can instantly bypass admin PIN screens and modify prayer timetables or bulletin messages directly from the control console.
+              ) : (
+                <div className="pb-1">
+                  <div className="flex items-center gap-2 mb-2 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <Lock className="w-4 h-4 shrink-0" />
+                    <span className="text-[10px] font-bold uppercase font-mono tracking-wide">
+                      Admin Access Required
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-400 leading-relaxed my-1">
+                    Sign in with your admin credentials to customize prayers, announcement scrolls, and themes.
                   </p>
-                </div>
-
-                {/* Logout Trigger button */}
-                <div className="pt-2 flex">
                   <button
                     onClick={() => {
-                      logout();
+                      setShowModal(true);
                       setIsOpen(false);
                     }}
-                    className="w-full h-9 flex items-center justify-center gap-2 bg-rose-950/15 hover:bg-rose-950/30 border border-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-bold rounded-lg transition-colors cursor-pointer select-none"
-                    id="auth-logout-btn"
+                    className="w-full mt-2 h-9 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer select-none"
+                    id="dropdown-open-signin"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sign Out</span>
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Sign In to Your Board</span>
                   </button>
                 </div>
-              </motion.div>
+              )}
+            </div>
+
+            {/* 2. Board Status & Active Configurations */}
+            <div className="pt-3 pb-1">
+              <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider block mb-2">
+                Sanctuary Board Context
+              </span>
+              <div className="space-y-2 text-[11px]">
+                {/* Active Mosque */}
+                <div className="flex items-center justify-between text-stone-300">
+                  <span className="text-stone-400 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-stone-500" /> Current Mosque
+                  </span>
+                  <span className="font-semibold text-white max-w-[140px] truncate">
+                    {mosqueSlug && data?.config?.name ? data.config.name : 'All Directories'}
+                  </span>
+                </div>
+
+                {/* Cloud Connection */}
+                <div className="flex items-center justify-between text-stone-300">
+                  <span className="text-stone-400 flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-stone-500" /> Database Link
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isFirebaseActive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`} />
+                    <span className="font-mono text-[9px] uppercase font-semibold">
+                      {isFirebaseActive ? 'Cloud Live' : 'Simulated Dev'}
+                    </span>
+                  </span>
+                </div>
+
+                {/* Calculation Methodology */}
+                {mosqueSlug && data?.config && (
+                  <>
+                    <div className="flex items-center justify-between text-stone-300">
+                      <span className="text-stone-400 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-stone-500" /> calculation
+                      </span>
+                      <span className="text-stone-300 font-medium truncate max-w-[130px]">
+                        {data.config.prayerCalcMethod === 'manual' ? 'Manual Timetable' : 'Auto GPS Formulas'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-stone-300">
+                      <span className="text-stone-400 flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-stone-500" /> Styling Palette
+                      </span>
+                      <span className="text-stone-300 text-[10px] truncate max-w-[130px] font-medium flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 rounded bg-[#D4AF37]" />
+                        {activeThemeName}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Navigation & Actions Shortcuts */}
+            <div className="pt-3 pb-1">
+              <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider block mb-2">
+                Primary Board Actions
+              </span>
+              <div className="space-y-1.5">
+                {onSelectAllMosques && (
+                  <button
+                    onClick={() => {
+                      onSelectAllMosques();
+                      setIsOpen(false);
+                    }}
+                    className="w-full h-8 px-2.5 rounded-lg hover:bg-white/5 active:bg-white/10 text-stone-300 flex items-center gap-2.5 text-left text-xs transition-colors cursor-pointer"
+                  >
+                    <Home className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>All Mosques Directory</span>
+                  </button>
+                )}
+
+                {onEnterTVMode && (
+                  <button
+                    onClick={() => {
+                      onEnterTVMode();
+                      setIsOpen(false);
+                    }}
+                    className="w-full h-8 px-2.5 rounded-lg hover:bg-white/5 active:bg-white/10 text-stone-300 flex items-center gap-2.5 text-left text-xs transition-colors cursor-pointer"
+                  >
+                    <Tv className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span>TV Screen Broadcast View</span>
+                  </button>
+                )}
+
+                {onEnterAdminConsole && (
+                  <button
+                    onClick={() => {
+                      onEnterAdminConsole();
+                      setIsOpen(false);
+                    }}
+                    className="w-full h-8 px-2.5 rounded-lg hover:bg-white/5 active:bg-white/10 text-stone-300 flex items-center gap-2.5 text-left text-xs transition-colors cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span>Administrative Config Panel</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 4. Help & Technical Hotline */}
+            <div className="pt-3 pb-1">
+              <div className="p-2 bg-stone-950/40 border border-white/5 rounded-xl space-y-1">
+                <span className="text-[8px] font-mono font-bold text-stone-400 flex items-center gap-1">
+                  <HelpCircle className="w-3 h-3 text-[#D4AF37]" /> TECHNICAL HELPDESK
+                </span>
+                <p className="text-[10px] text-stone-500 leading-normal font-sans">
+                  Need custom GIS calculations coordinate lookup or technical setup hotline? Contact operations.
+                </p>
+                <div className="pt-1 flex flex-col gap-0.5 text-[9px] font-mono text-amber-500/90 leading-tight">
+                  <a href="tel:+18005550199" className="hover:underline flex items-center gap-1">
+                    <Phone className="w-2.5 h-2.5" /> +1 (800) 555-0199
+                  </a>
+                  <p className="text-[8px] text-stone-500 mt-1 uppercase">
+                    PROTIP: Press [F11] key to run full-screen
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Logout Session Actions */}
+            {adminUser && (
+              <div className="pt-3">
+                <button
+                  onClick={() => {
+                    logout();
+                    setIsOpen(false);
+                  }}
+                  className="w-full h-9 flex items-center justify-center gap-2 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/20 text-rose-400 text-xs font-bold rounded-lg transition-colors cursor-pointer select-none"
+                  id="auth-logout-btn"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Exit Session (Sign Out)</span>
+                </button>
+              </div>
             )}
-          </AnimatePresence>
-        </div>
-      ) : (
-        /* Logged Out State Login Sign Up CTA */
-        <button
-          onClick={() => setShowModal(true)}
-          className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-sans text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all select-none cursor-pointer border border-emerald-500/30"
-          id="auth-login-trigger"
-        >
-          <LogIn className="w-4 h-4 text-emerald-200" />
-          <span>Sign In</span>
-        </button>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive Main Register/Log In Modal Overlay */}
       <AnimatePresence>

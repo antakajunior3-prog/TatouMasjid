@@ -284,7 +284,6 @@ function MainDashboard() {
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <AuthMenu />
             <button
               onClick={() => selectMosque('')}
               className="h-10 px-3 md:px-4 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 font-sans text-xs font-semibold flex items-center justify-center gap-2 border border-white/10 active:scale-95 transition-all cursor-pointer"
@@ -313,6 +312,11 @@ function MainDashboard() {
               {isAdmin ? <Lock className="w-4 h-4 text-emerald-400" /> : <Settings className="w-4 h-4" />}
               <span>{isAdmin ? "Admin Active" : "Configure"}</span>
             </button>
+            <AuthMenu 
+              onSelectAllMosques={() => selectMosque('')}
+              onEnterTVMode={() => setIsTVMode(true)}
+              onEnterAdminConsole={handleAdminClick}
+            />
           </div>
         </div>
       </header>
