@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isDashboardValid(data) {
+      return data.keys().hasAll(['config', 'prayers', 'jummah', 'announcements', 'quotes', 'lastUpdated']) 
+             && data.config is map 
+             && data.prayers is list 
+             && data.jummah is list 
+             && data.announcements is list 
+             && data.quotes is list 
+             && data.lastUpdated is string;
+    }
+
+    // Mosque dashboard collection
+    match /mosqueData/{dashboardId} {
+      allow get: if true;
+      allow list: if false; // Block query listing to prevent scraping - we query specific dashboardIds directly!
+      
+      allow create: if isSignedIn() 
+                    && isValidId(dashboardId) 
+                    && isDashboardValid(incoming());
+                    
+      allow update: if isSignedIn() 
+                    && isValidId(dashboardId) 
+                    && isDashboardValid(incoming());
+                    
+      allow delete: if false; // The dashboard configuration cannot be deleted
+    }
+  }
+}

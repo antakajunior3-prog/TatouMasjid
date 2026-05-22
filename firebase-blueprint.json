@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "PrayerTime": {
+      "title": "PrayerTime",
+      "description": "Represents the Adhan and Iqamah times for a single daily prayer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "arabicName": { "type": "string" },
+        "adhan": { "type": "string" },
+        "iqamahType": { "type": "string", "enum": ["fixed", "relative"] },
+        "iqamahValue": { "type": "string" },
+        "icon": { "type": "string" }
+      },
+      "required": ["id", "name", "arabicName", "adhan", "iqamahType", "iqamahValue", "icon"]
+    },
+    "JummahSession": {
+      "title": "JummahSession",
+      "description": "Represents a single Friday prayer service.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "khutbahTime": { "type": "string" },
+        "iqamahTime": { "type": "string" },
+        "khateeb": { "type": "string" }
+      },
+      "required": ["id", "name", "khutbahTime", "iqamahTime", "khateeb"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Displays custom warnings, schedules, or events in the rolling banner.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "title", "content", "createdAt", "active"]
+    },
+    "IslamicQuote": {
+      "title": "IslamicQuote",
+      "description": "A Hadith, Quranic verse, or word of wisdom shown on rotating loops.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "required": ["id", "text", "source"]
+    },
+    "MosqueConfig": {
+      "title": "MosqueConfig",
+      "description": "Mosque identity, location settings, and core contact details.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "logoType": { "type": "string", "enum": ["preset", "url"] },
+        "logoPreset": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "country": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "pinCode": { "type": "string" },
+        "hijriAdjustment": { "type": "number" },
+        "themeId": { "type": "string", "enum": ["editorial-aesthetic", "emerald-dark", "emerald-light", "slate-gold", "royal-blue"] },
+        "useCalculatedTimes": { "type": "boolean" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "calculationMethod": { "type": "string", "enum": ["MuslimWorldLeague", "Egyptian", "Karachi", "UmmAlQura", "Dubai", "MoonsightingCommittee", "NorthAmerica", "Kuwait", "Qatar", "Singapore", "Tehran", "Turkey", "Other"] },
+        "madhab": { "type": "string", "enum": ["Shafi", "Hanafi"] }
+      },
+      "required": ["name", "logoType", "logoPreset", "address", "city", "country", "pinCode", "hijriAdjustment", "themeId"]
+    },
+    "DashboardData": {
+      "title": "DashboardData",
+      "description": "Entire structured state of the Mosque dashboard, used for instant real-time synchronization.",
+      "type": "object",
+      "properties": {
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["lastUpdated"]
+    }
+  },
+  "firestore": {
+    "/mosqueData/{dashboardId}": {
+      "schema": "DashboardData",
+      "description": "The unified real-time dashboard configurations and lists document."
+    }
+  }
+}
