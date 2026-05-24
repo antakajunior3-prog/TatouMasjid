@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { SyncData, PrayerTime, JummahSession, Announcement, IslamicQuote, MosqueConfig } from './types';
 import { initialSyncData } from './initialData';
 import { calculatePrayersForMosque } from './utils';
-import { db, auth, isFirebaseEnabled, handleFirestoreError, OperationType, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from './firebase';
+import { db, auth, rtdb, isFirebaseEnabled, handleFirestoreError, OperationType, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from './firebase';
 import { doc, onSnapshot, setDoc, collection, getDocs } from 'firebase/firestore';
+import { ref, onValue } from 'firebase/database';
 import { onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 
 interface AllMosqueMeta {
@@ -72,6 +73,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [pinAuthenticated, setPinAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem(PIN_AUTH_KEY) === 'true';
   });
+  const [rtdbData, setRtdbData] = useState<any>(null);
 
   // Track popstate to support browser Back/Forward navigation!
   useEffect(() => {
@@ -155,10 +157,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (auth && !auth.currentUser) {
               await signInAnonymously(auth);
             }
-            await setDoc(doc(db, FIRESTORE_COLLECTION, 'masjid-al-noor'), defaultNoor);
+            await setDoc(doc(db, FIRESTORE_COLLECTION, 'tatou-masjid'), defaultNoor);
             await setDoc(doc(db, FIRESTORE_COLLECTION, 'masjid-rahma'), defaultRahma);
             mosquesList.push(
-              { slug: 'masjid-al-noor', name: "Al-Noor Grand Mosque", city: "London", country: "United Kingdom" },
+              { slug: 'tatou-masjid', name: "Tatou Masjid", city: "London", country: "United Kingdom" },
               { slug: 'masjid-rahma', name: "Masjid Ar-Rahman", city: "New York", country: "United States" }
             );
           } catch (err) {
@@ -185,11 +187,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Seed offline local storage if completely empty
       if (mosquesList.length === 0) {
         const defaultList = [
-          { slug: 'masjid-al-noor', name: "Al-Noor Grand Mosque", city: "London", country: "United Kingdom" },
+          { slug: 'tatou-masjid', name: "Tatou Masjid", city: "London", country: "United Kingdom" },
           { slug: 'masjid-rahma', name: "Masjid Ar-Rahman", city: "New York", country: "United States" }
         ];
         const initialDict: Record<string, SyncData> = {};
-        initialDict['masjid-al-noor'] = { ...initialSyncData };
+        initialDict['tatou-masjid'] = { ...initialSyncData };
         initialDict['masjid-rahma'] = {
           ...initialSyncData,
           config: {
@@ -219,6 +221,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshAllMosques();
   }, [isFirebaseEnabled]);
 
+  // Connect to Firebase Realtime Database for live updates on prayer times and announcements
+  useEffect(() => {
+    if (!isFirebaseEnabled || !rtdb) {
+      return;
+    }
+    const rtdbRef = ref(rtdb, 'mosques/tatoumasjid');
+    const unsubscribeRtdb = onValue(rtdbRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        console.log("Realtime Database update for mosques/tatoumasjid received:", val);
+        setRtdbData(val);
+      }
+    }, (error) => {
+      console.warn("Realtime Database subscription error:", error);
+    });
+    return () => unsubscribeRtdb();
+  }, [isFirebaseEnabled]);
+
   // Sync state with selected Firestore document or offline cache
   useEffect(() => {
     if (!mosqueSlug) {
@@ -233,7 +253,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
       if (offlineDict[mosqueSlug]) {
         setData(offlineDict[mosqueSlug]);
-      } else if (mosqueSlug === 'masjid-al-noor') {
+      } else if (mosqueSlug === 'tatou-masjid' || mosqueSlug === 'masjid-al-noor') {
         setData(initialSyncData);
       } else if (mosqueSlug === 'masjid-rahma') {
         setData({
@@ -608,11 +628,138 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [data.config, data.prayers, currentCalcDate]);
 
   const resolvedData = React.useMemo(() => {
-    return {
+    const baseResolved = {
       ...data,
       prayers: resolvedPrayers
     };
-  }, [data, resolvedPrayers]);
+
+    // Only apply if we are on 'tatou-masjid' and we have rtdbData
+    if (mosqueSlug !== 'tatou-masjid' || !rtdbData) {
+      return baseResolved;
+    }
+
+    // Copy prayers and override
+    const overriddenPrayers = baseResolved.prayers.map(p => {
+      const pId = p.id;
+      if (['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'].includes(pId)) {
+        // Direct key check (e.g. rtdbData.fajr)
+        const rtdbVal = rtdbData[pId as keyof typeof rtdbData];
+        
+        // Handle explicit adhan/iqamah keys (e.g. rtdbData.fajr_adhan, rtdbData.fajr_iqamah)
+        const adhanKey = `${pId}_adhan`;
+        const iqamahKey = `${pId}_iqamah`;
+        const iqamahValKey = `${pId}_iqamahValue`;
+        
+        const directAdhan = rtdbData[adhanKey as keyof typeof rtdbData];
+        const directIqamah = rtdbData[iqamahKey as keyof typeof rtdbData] || rtdbData[iqamahValKey as keyof typeof rtdbData];
+        
+        if (directAdhan !== undefined && directAdhan !== null) {
+          const updated = { ...p, adhan: String(directAdhan) };
+          if (directIqamah !== undefined && directIqamah !== null) {
+            updated.iqamahType = 'fixed' as const;
+            updated.iqamahValue = String(directIqamah);
+          }
+          return updated;
+        }
+
+        if (rtdbVal !== undefined && rtdbVal !== null) {
+          if (typeof rtdbVal === 'string') {
+            if (rtdbVal.includes('/')) {
+              const parts = rtdbVal.split('/');
+              return {
+                ...p,
+                adhan: parts[0].trim(),
+                iqamahType: 'fixed' as const,
+                iqamahValue: parts[1].trim()
+              };
+            } else if (rtdbVal.includes(',')) {
+              const parts = rtdbVal.split(',');
+              return {
+                ...p,
+                adhan: parts[0].trim(),
+                iqamahType: 'fixed' as const,
+                iqamahValue: parts[1].trim()
+              };
+            } else {
+              return {
+                ...p,
+                adhan: rtdbVal
+              };
+            }
+          } else if (typeof rtdbVal === 'object') {
+            const parsed: Partial<PrayerTime> = {};
+            if ('adhan' in rtdbVal && typeof rtdbVal.adhan === 'string') {
+              parsed.adhan = rtdbVal.adhan;
+            } else if ('time' in rtdbVal && typeof rtdbVal.time === 'string') {
+              parsed.adhan = rtdbVal.time;
+            }
+            
+            if ('iqamah' in rtdbVal && typeof rtdbVal.iqamah === 'string') {
+              parsed.iqamahType = 'fixed' as const;
+              parsed.iqamahValue = rtdbVal.iqamah;
+            } else if ('iqamahValue' in rtdbVal && typeof rtdbVal.iqamahValue === 'string') {
+              parsed.iqamahValue = rtdbVal.iqamahValue;
+              if ('iqamahType' in rtdbVal && typeof rtdbVal.iqamahType === 'string') {
+                parsed.iqamahType = rtdbVal.iqamahType as any;
+              }
+            }
+            return {
+              ...p,
+              ...parsed
+            };
+          }
+        }
+      }
+      return p;
+    });
+
+    // Handle announcements
+    let announcements = baseResolved.announcements;
+    const rtdbAnnVal = rtdbData.announcement;
+    if (rtdbAnnVal !== undefined && rtdbAnnVal !== null) {
+      if (typeof rtdbAnnVal === 'string' && rtdbAnnVal.trim() !== '') {
+        const existingRtdbAnnIdx = announcements.findIndex(a => a.id === 'rt-announcement');
+        const rtAnn: Announcement = {
+          id: 'rt-announcement',
+          title: 'Official Announcement',
+          content: rtdbAnnVal,
+          createdAt: new Date().toISOString().split('T')[0],
+          active: true
+        };
+
+        if (existingRtdbAnnIdx > -1) {
+          announcements = announcements.map((a, idx) => idx === existingRtdbAnnIdx ? rtAnn : a);
+        } else {
+          announcements = [rtAnn, ...announcements];
+        }
+      } else if (typeof rtdbAnnVal === 'object') {
+        const title = rtdbAnnVal.title || 'Official Announcement';
+        const content = rtdbAnnVal.content || rtdbAnnVal.text || '';
+        const active = rtdbAnnVal.active !== undefined ? rtdbAnnVal.active : true;
+        if (content) {
+          const rtAnn: Announcement = {
+            id: 'rt-announcement',
+            title,
+            content,
+            createdAt: rtdbAnnVal.createdAt || new Date().toISOString().split('T')[0],
+            active
+          };
+          const existingRtdbAnnIdx = announcements.findIndex(a => a.id === 'rt-announcement');
+          if (existingRtdbAnnIdx > -1) {
+            announcements = announcements.map((a, idx) => idx === existingRtdbAnnIdx ? rtAnn : a);
+          } else {
+            announcements = [rtAnn, ...announcements];
+          }
+        }
+      }
+    }
+
+    return {
+      ...baseResolved,
+      prayers: overriddenPrayers,
+      announcements
+    };
+  }, [data, resolvedPrayers, rtdbData, mosqueSlug]);
 
   return (
     <DashboardContext.Provider

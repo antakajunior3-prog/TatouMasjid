@@ -2,9 +2,9 @@ import { SyncData } from './types';
 
 export const initialSyncData: SyncData = {
   config: {
-    name: "Al-Noor Grand Mosque",
+    name: "Tatou Masjid",
     logoType: 'preset',
-    logoPreset: 'mosque',
+    logoPreset: 'crescent',
     address: "786 Mercy Way, London, UK",
     city: "London",
     country: "United Kingdom",

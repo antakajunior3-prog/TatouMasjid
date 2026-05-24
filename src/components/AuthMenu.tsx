@@ -22,7 +22,9 @@ import {
   Home,
   Layers,
   Phone,
-  Clock
+  Clock,
+  Play,
+  Square
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VISUAL_THEMES } from './ThemeStyles';
@@ -47,13 +49,18 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
     logout,
     isAdmin,
     data,
-    mosqueSlug
+    mosqueSlug,
+    updateConfig
   } = useDashboard();
 
   const [isOpen, setIsOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   
+  // Audio state
+  const [isPlayingTestAdhan, setIsPlayingTestAdhan] = useState(false);
+  const [audioInstance, setAudioInstance] = useState<HTMLAudioElement | null>(null);
+
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -65,6 +72,15 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioInstance) {
+        audioInstance.pause();
+      }
+    };
+  }, [audioInstance]);
 
   // Close dropdown on outside clicks
   useEffect(() => {
@@ -84,6 +100,28 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
     setPassword('');
     setConfirmPassword('');
     setDisplayName('');
+  };
+
+  const toggleTestAdhan = () => {
+    if (isPlayingTestAdhan) {
+      if (audioInstance) {
+        audioInstance.pause();
+        setIsPlayingTestAdhan(false);
+      }
+    } else {
+      // Test adhan or serene chime loop url
+      const testAudioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+      const audio = new Audio(testAudioUrl);
+      audio.volume = 0.35;
+      audio.play().catch(err => {
+        console.warn("Audio autoplay blocked or failed:", err);
+      });
+      setAudioInstance(audio);
+      setIsPlayingTestAdhan(true);
+      audio.onended = () => {
+        setIsPlayingTestAdhan(false);
+      };
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -176,14 +214,14 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
 
   return (
     <div className="relative font-sans text-neutral-200" ref={dropdownRef}>
-      {/* Universal Trigger Button: Sign In / Profile with Chevron */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 h-10 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 rounded-xl transition-all cursor-pointer text-left focus:outline-none select-none"
-        id="auth-profile-trigger"
-      >
-        {adminUser ? (
-          adminUser.photoURL ? (
+      {adminUser ? (
+        /* Logged In State: Elegant user profile trigger with quick options */
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-2 px-3 py-1.5 h-10 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 rounded-xl transition-all cursor-pointer text-left focus:outline-none select-none"
+          id="auth-profile-trigger"
+        >
+          {adminUser.photoURL ? (
             <img 
               src={adminUser.photoURL} 
               alt="Display" 
@@ -194,38 +232,55 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
             <div className="w-6 h-6 rounded-full bg-emerald-600 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold text-white uppercase font-mono">
               {getInitials(adminUser)}
             </div>
-          )
-        ) : (
-          <div className="w-6 h-6 rounded-full bg-neutral-800 border border-white/10 flex items-center justify-center text-stone-400">
-            <User className="w-3.5 h-3.5" />
-          </div>
-        )}
-        
-        <div className="hidden md:block">
-          {adminUser ? (
-            <>
-              <div className="text-[10px] font-bold text-white leading-tight max-w-[110px] truncate">
-                {adminUser.displayName || adminUser.email?.split('@')[0]}
-              </div>
-              <div className="text-[8px] text-[#D4AF37] font-mono leading-tight uppercase flex items-center gap-0.5 mt-0.5">
-                <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
-                <span>{isAdmin ? 'System Admin' : 'Logged In'}</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-[10px] font-bold text-white leading-tight">
-                Guest Portals
-              </div>
-              <div className="text-[8px] text-stone-400 font-mono leading-tight uppercase flex items-center gap-0.5 mt-0.5">
-                <Lock className="w-2.5 h-2.5 text-amber-500" />
-                <span>Sign In / Options</span>
-              </div>
-            </>
           )}
+          
+          <div className="hidden md:block">
+            <div className="text-[10px] font-bold text-white leading-tight max-w-[110px] truncate">
+              {adminUser.displayName || adminUser.email?.split('@')[0]}
+            </div>
+            <div className="text-[8px] text-[#D4AF37] font-mono leading-tight uppercase flex items-center gap-0.5 mt-0.5">
+              <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+              <span>{isAdmin ? 'System Admin' : 'Logged In'}</span>
+            </div>
+          </div>
+          <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      ) : (
+        /* Logged Out State: Beautiful unified quick actions in header */
+        <div className="bg-black/30 p-1.5 rounded-xl border border-white/10 flex items-center gap-1.5 shadow-md">
+          {/* Quick Tab triggers to open directly on respective tabs */}
+          <button
+            onClick={() => {
+              setActiveTab('login');
+              setShowModal(true);
+            }}
+            className="h-7 px-3 text-[10.5px] font-bold text-[#D4AF37] hover:text-white bg-[#D4AF37]/10 hover:bg-[#D4AF37]/25 border border-[#D4AF37]/20 rounded-lg active:scale-95 transition-all cursor-pointer select-none whitespace-nowrap"
+            id="bar-sign-in"
+          >
+            Sign In
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveTab('signup');
+              setShowModal(true);
+            }}
+            className="hidden sm:inline-flex h-7 px-3 text-[10.5px] font-bold text-emerald-300 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/20 rounded-lg active:scale-95 transition-all cursor-pointer select-none whitespace-nowrap"
+            id="bar-sign-up"
+          >
+            Sign Up
+          </button>
+
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="h-7 px-2 text-[10.5px] font-semibold text-stone-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all flex items-center gap-1 cursor-pointer select-none whitespace-nowrap"
+            id="bar-more-menu"
+          >
+            <span className="hidden md:inline">More Menu</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
         </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      )}
 
       {/* Expanded Multi-Section Quick Settings & Auth Options Panel */}
       <AnimatePresence>
@@ -234,7 +289,7 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="absolute right-0 mt-2 w-72 rounded-2xl bg-stone-900 border border-white/10 shadow-2xl z-50 p-4 divide-y divide-white/5 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="absolute right-0 mt-2 w-72 rounded-2xl bg-stone-900 border border-white/10 shadow-2xl z-50 p-4 divide-y divide-white/5 space-y-4 max-h-[90vh] overflow-y-auto font-sans"
             id="auth-profile-dropdown"
           >
             {/* 1. Header & Identity Portal */}
@@ -277,22 +332,146 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
                   <p className="text-[11px] text-stone-400 leading-relaxed my-1">
                     Sign in with your admin credentials to customize prayers, announcement scrolls, and themes.
                   </p>
+                  
+                  {/* Immediate registration links for fast fallback */}
+                  <div className="grid grid-cols-2 gap-1.5 mt-2.5">
+                    <button
+                      onClick={() => {
+                        setActiveTab('login');
+                        setShowModal(true);
+                        setIsOpen(false);
+                      }}
+                      className="h-8 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer select-none"
+                    >
+                      <LogIn className="w-3 h-3" />
+                      <span>Log In</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('signup');
+                        setShowModal(true);
+                        setIsOpen(false);
+                      }}
+                      className="h-8 flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 hover:text-white text-stone-300 text-[11px] font-bold rounded-lg border border-white/10 transition-colors cursor-pointer select-none"
+                    >
+                      <UserPlus className="w-3 h-3 text-[#D4AF37]" />
+                      <span>Sign Up</span>
+                    </button>
+                  </div>
+                  
                   <button
                     onClick={() => {
-                      setShowModal(true);
-                      setIsOpen(false);
+                      handleGoogleLogin();
                     }}
-                    className="w-full mt-2 h-9 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer select-none"
-                    id="dropdown-open-signin"
+                    className="w-full mt-1.5 h-8 flex items-center justify-center gap-1.5 bg-white hover:bg-stone-200 text-slate-800 text-[11px] font-bold rounded-lg transition-colors cursor-pointer select-none border border-white"
                   >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Sign In to Your Board</span>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.5-.1.1.1 1.07-.64 1.53-1.82 2.83-3.23 3.75h5.18c3.03-2.8 4.79-6.9 4.79-11.65z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-6.18-4.79c-1.71 1.15-3.9 1.83-6.15 1.83-4.74 0-8.75-3.2-10.18-7.52H1.36v4.79C4.12 18.52 7.79 24 12 24z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M1.365 14.79c-.36-1.08-.57-2.22-.57-3.41s.21-2.33.57-3.41V3.18H1.36C.49 4.93 0 6.9 0 9s.49 8.07 1.36 9.82l4.82-3.83z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.95 1.19 15.24 0 12 0 7.79 0 4.12 5.48 1.36 10.18l4.82 3.83c1.43-4.32 5.44-7.52 10.18-7.52z"
+                      />
+                    </svg>
+                    <span>Google Sign In</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* 2. Board Status & Active Configurations */}
+            {/* 2. Audio Chime Broadcaster Echo Tool */}
+            {mosqueSlug && data?.config && (
+              <div className="pt-3 pb-1">
+                <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider block mb-1.5">
+                  Spiritual Audio Feed
+                </span>
+                <button
+                  onClick={toggleTestAdhan}
+                  className={`w-full h-8 flex items-center justify-center gap-2 border rounded-lg text-[10.5px] font-bold transition-all cursor-pointer select-none active:scale-95 ${
+                    isPlayingTestAdhan 
+                      ? 'bg-rose-500/10 border-rose-500/35 text-rose-300 hover:bg-rose-500/20' 
+                      : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/20'
+                  }`}
+                >
+                  {isPlayingTestAdhan ? (
+                    <>
+                      <Square className="w-3 h-3 fill-rose-300" />
+                      <span>Stop Test Adhan Echo</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3 h-3 fill-emerald-300" />
+                      <span>Play Test Adhan Sound</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* 3. Theme Preset Ambient Fast Swapper */}
+            {mosqueSlug && data?.config && (isAdmin || !isFirebaseActive) && (
+              <div className="pt-3 pb-1">
+                <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider block mb-1.5">
+                  Override Palette
+                </span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {Object.values(VISUAL_THEMES).map((thm) => (
+                    <button
+                      key={thm.id}
+                      title={thm.name}
+                      onClick={() => updateConfig({ themeId: thm.id })}
+                      className={`h-7 rounded-lg border flex items-center justify-center transition-all relative cursor-pointer ${
+                        data.config.themeId === thm.id 
+                          ? 'border-[#D4AF37] bg-white/10 scale-105 shadow-md' 
+                          : 'border-white/5 bg-stone-950/40 hover:bg-white/5'
+                      }`}
+                    >
+                      <span className={`w-3 h-3 rounded-full ${thm.id === 'emerald-light' ? 'bg-emerald-600 border border-white/20' : 'bg-current'}`} style={{ color: thm.id === 'emerald-light' ? undefined : thm.accentGold || thm.accentGreen }} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 4. Hijri Adjustment Quick Offset tuning */}
+            {mosqueSlug && data?.config && (isAdmin || !isFirebaseActive) && (
+              <div className="pt-3 pb-1">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider">
+                    Hijri Lunar Offset
+                  </span>
+                  <span className="font-mono text-[9px] bg-[#D4AF37]/15 border border-[#D4AF37]/35 text-[#D4AF37] px-1.5 py-0.5 rounded font-bold">
+                    {data.config.hijriAdjustment > 0 ? `+${data.config.hijriAdjustment}` : data.config.hijriAdjustment} Days
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => updateConfig({ hijriAdjustment: data.config.hijriAdjustment - 1 })}
+                    className="h-7 rounded-md bg-stone-950/40 hover:bg-stone-950/60 border border-white/5 flex items-center justify-center text-[10px] text-stone-300 hover:text-white transition-colors cursor-pointer select-none"
+                  >
+                    - Drop Day
+                  </button>
+                  <button
+                    onClick={() => updateConfig({ hijriAdjustment: data.config.hijriAdjustment + 1 })}
+                    className="h-7 rounded-md bg-stone-950/40 hover:bg-stone-950/60 border border-white/5 flex items-center justify-center text-[10px] text-stone-300 hover:text-white transition-colors cursor-pointer select-none"
+                  >
+                    + Add Day
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 5. Board Status & Active Context Parameters */}
             <div className="pt-3 pb-1">
               <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider block mb-2">
                 Sanctuary Board Context
@@ -338,7 +517,7 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
                         <Layers className="w-3.5 h-3.5 text-stone-500" /> Styling Palette
                       </span>
                       <span className="text-stone-300 text-[10px] truncate max-w-[130px] font-medium flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 rounded bg-[#D4AF37]" />
+                        <span className="w-2.5 h-2.5 rounded bg-[#D4AF37]" style={{ backgroundColor: VISUAL_THEMES[data.config.themeId]?.accentGold }} />
                         {activeThemeName}
                       </span>
                     </div>
@@ -347,7 +526,7 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
               </div>
             </div>
 
-            {/* 3. Navigation & Actions Shortcuts */}
+            {/* 6. Navigation & Actions Shortcuts */}
             <div className="pt-3 pb-1">
               <span className="text-[9px] font-mono font-semibold uppercase text-stone-500 tracking-wider block mb-2">
                 Primary Board Actions
@@ -394,7 +573,7 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
               </div>
             </div>
 
-            {/* 4. Help & Technical Hotline */}
+            {/* 7. Help & Technical Hotline */}
             <div className="pt-3 pb-1">
               <div className="p-2 bg-stone-950/40 border border-white/5 rounded-xl space-y-1">
                 <span className="text-[8px] font-mono font-bold text-stone-400 flex items-center gap-1">
@@ -403,18 +582,18 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
                 <p className="text-[10px] text-stone-500 leading-normal font-sans">
                   Need custom GIS calculations coordinate lookup or technical setup hotline? Contact operations.
                 </p>
-                <div className="pt-1 flex flex-col gap-0.5 text-[9px] font-mono text-amber-500/90 leading-tight">
+                <div className="pt-0.5 flex flex-col gap-0.5 text-[9px] font-mono text-amber-500/90 leading-tight">
                   <a href="tel:+18005550199" className="hover:underline flex items-center gap-1">
                     <Phone className="w-2.5 h-2.5" /> +1 (800) 555-0199
                   </a>
-                  <p className="text-[8px] text-stone-500 mt-1 uppercase">
+                  <p className="text-[8.5px] text-stone-500 mt-1 uppercase">
                     PROTIP: Press [F11] key to run full-screen
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* 5. Logout Session Actions */}
+            {/* 8. Logout Session Actions */}
             {adminUser && (
               <div className="pt-3">
                 <button

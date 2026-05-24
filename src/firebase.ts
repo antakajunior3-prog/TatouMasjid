@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Detect if Firebase has been configured with real credentials
@@ -15,12 +16,14 @@ export const isFirebaseEnabled = !!(
 let app: any = null;
 let dbInstance: any = null;
 let authInstance: any = null;
+let rtdbInstance: any = null;
 
 if (isFirebaseEnabled) {
   try {
     app = initializeApp(firebaseConfig);
     dbInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
     authInstance = getAuth(app);
+    rtdbInstance = getDatabase(app);
   } catch (error) {
     console.error("Firebase initialization failed:", error);
   }
@@ -28,6 +31,7 @@ if (isFirebaseEnabled) {
 
 export const db = dbInstance;
 export const auth = authInstance;
+export const rtdb = rtdbInstance;
 export { GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously };
 
 // Firebase error handler conformant to the Skill requirements

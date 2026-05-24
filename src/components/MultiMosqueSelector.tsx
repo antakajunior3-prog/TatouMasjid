@@ -93,8 +93,43 @@ export const MultiMosqueSelector: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-[#06140E] bg-radial-[at_top_right] from-[#0E2E1F] via-[#06140E] to-[#030A07] text-stone-200 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-[#06140E] bg-radial-[at_top_right] from-[#0E2E1F] via-[#06140E] to-[#030A07] text-stone-200 py-6 md:py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-5xl mx-auto">
+        
+        {/* Top-Right Header Bar */}
+        <div className="flex justify-between items-center border-b border-white/5 pb-4 mb-4 md:mb-8">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-emerald-400">
+              <svg viewBox="0 0 100 100" className="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="tatouGold" x1="15%" y1="15%" x2="85%" y2="85%">
+                    <stop offset="0%" stopColor="#FFECA1" />
+                    <stop offset="40%" stopColor="#E9C149" />
+                    <stop offset="70%" stopColor="#C39A2B" />
+                    <stop offset="100%" stopColor="#87620F" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M62 18 C41 18 24 35 24 56 C24 77 41 94 62 94 C48 94 36 82 36 56 C36 30 48 18 62 18 Z" 
+                  fill="url(#tatouGold)" 
+                />
+              </svg>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold tracking-widest text-[#D4AF37] font-serif uppercase leading-none">
+                Tatou Masjid
+              </span>
+              <span className="text-[8px] uppercase tracking-wide text-stone-400 font-mono mt-1">
+                Sanctuary Directory
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <AuthMenu 
+              onEnterAdminConsole={() => setIsFormOpen(!isFormOpen)}
+            />
+          </div>
+        </div>
         
         {/* Header Block with elegant Islamic geometric mood */}
         <div className="text-center relative py-8 mb-12">
@@ -105,9 +140,39 @@ export const MultiMosqueSelector: React.FC = () => {
             </svg>
           </div>
 
-          <div className="flex justify-center mb-3">
-            <div className="p-3 bg-amber-500/10 rounded-full border border-amber-500/35 text-[#D4AF37] animate-pulse">
-              <MoonStar className="w-8 h-8" />
+          <div className="flex justify-center mb-4">
+            <div className="p-1 bg-amber-500/5 rounded-full border border-amber-500/20 shadow-[0_0_25px_rgba(212,175,55,0.06)] animate-pulse">
+              <svg viewBox="0 0 100 100" className="w-16 h-16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="headerGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#FFECA1" />
+                    <stop offset="50%" stopColor="#D4AF37" />
+                    <stop offset="100%" stopColor="#AA7C11" />
+                  </linearGradient>
+                  <filter id="crescentGlowHeader" x="-10%" y="-10%" width="120%" height="120%">
+                    <feGaussianBlur stdDeviation="1.5" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                </defs>
+                {/* Thin golden background geometry */}
+                <circle cx="50" cy="50" r="42" stroke="url(#headerGoldGrad)" strokeWidth="0.5" strokeDasharray="3 6" className="opacity-30" />
+                <circle cx="50" cy="50" r="39" stroke="url(#headerGoldGrad)" strokeWidth="0.25" className="opacity-20" />
+                
+                {/* Handcrafted Golden Crescent */}
+                <path 
+                  d="M56 26 C39 26 26 39 26 56 C26 73 39 86 56 86 C44 86 34 76 34 56 C34 36 44 26 56 26 Z" 
+                  fill="url(#headerGoldGrad)"
+                  filter="url(#crescentGlowHeader)"
+                  className="drop-shadow-[0_2px_10px_rgba(212,175,55,0.4)]"
+                />
+
+                {/* Sparkling 8-Point Star nestled nicely */}
+                <g transform="translate(62, 54) scale(0.8)">
+                  <polygon points="-8,0 0,-8 8,0 0,8" fill="url(#headerGoldGrad)" />
+                  <polygon points="-5.65,-5.65 5.65,-5.65 5.65,5.65 -5.65,5.65" fill="url(#headerGoldGrad)" />
+                  <circle cx="0" cy="0" r="1.5" fill="#FFF" className="animate-ping" style={{ animationDuration: '2.5s' }} />
+                </g>
+              </svg>
             </div>
           </div>
           
@@ -148,9 +213,6 @@ export const MultiMosqueSelector: React.FC = () => {
                   <Plus className="w-4 h-4" />
                   <span>Register Mosque</span>
                 </button>
-                <AuthMenu 
-                  onEnterAdminConsole={() => setIsFormOpen(!isFormOpen)}
-                />
               </div>
             </div>
 

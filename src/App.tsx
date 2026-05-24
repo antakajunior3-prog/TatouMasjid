@@ -26,45 +26,217 @@ import {
 
 // Handcrafted responsive Islamic preset SVG vectors
 const LogoIcon: React.FC<{ type: string; className?: string }> = ({ type, className = "w-10 h-10" }) => {
+  const gradientId = `gold-grad-${type}`;
+
   if (type === 'crescent') {
     return (
-      <svg viewBox="0 0 100 100" className={`${className} text-[#D4AF37] fill-none stroke-current`}>
-        <path d="M30 50 A 22 22 0 1 0 73 35 A 19 19 0 1 1 45 68" fill="currentColor" fillOpacity="0.1" strokeWidth="2.5" />
+      <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id={gradientId} x1="15%" y1="15%" x2="85%" y2="85%">
+            <stop offset="0%" stopColor="#FFECA1" />
+            <stop offset="40%" stopColor="#E9C149" />
+            <stop offset="70%" stopColor="#C39A2B" />
+            <stop offset="100%" stopColor="#87620F" />
+          </linearGradient>
+          <filter id="crescent-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+        {/* Soft background golden orbit */}
+        <circle cx="50" cy="50" r="42" stroke={`url(#${gradientId})`} strokeWidth="1" strokeDasharray="3 6" className="opacity-40 animate-[spin_80s_linear_infinite]" />
+        
+        {/* The Luxury-Crafted Crescent Moon */}
+        <path 
+          d="M62 18 C41 18 24 35 24 56 C24 77 41 94 62 94 C48 94 36 82 36 56 C36 30 48 18 62 18 Z" 
+          fill={`url(#${gradientId})`} 
+          filter="url(#crescent-glow)"
+          stroke="#5a420b"
+          strokeWidth="0.5"
+          className="drop-shadow-[0_2px_8px_rgba(212,175,55,0.35)]"
+        />
+
+        {/* Small sparkling geometric dot accent */}
+        <circle cx="36" cy="24" r="1.5" fill="#FFF" className="animate-ping" style={{ animationDuration: '4s' }} />
+        <circle cx="48" cy="84" r="1" fill="#FFECA1" className="animate-pulse" />
       </svg>
     );
   }
+
   if (type === 'star') {
     return (
-      <svg viewBox="0 0 100 100" className={`${className} text-[#D4AF37] fill-none stroke-current`}>
-        <path d="M28 50 A 22 22 0 1 0 70 36 A 18 18 0 1 1 42 66" fill="currentColor" fillOpacity="0.1" strokeWidth="2.5" />
-         <polygon points="68,22 71,29 78,29 73,34 75,41 68,36 61,41 63,34 58,29 65,29" fill="currentColor" strokeWidth="0" />
+      <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id={gradientId} x1="15%" y1="15%" x2="85%" y2="85%">
+            <stop offset="0%" stopColor="#FFECA1" />
+            <stop offset="40%" stopColor="#E9C149" />
+            <stop offset="70%" stopColor="#C39A2B" />
+            <stop offset="100%" stopColor="#87620F" />
+          </linearGradient>
+          <linearGradient id="emerald-star-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#34D399" />
+            <stop offset="100%" stopColor="#059669" />
+          </linearGradient>
+          <filter id="crescent-glow-2" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+        {/* Decorative thin geometry lines */}
+        <circle cx="50" cy="50" r="44" stroke={`url(#${gradientId})`} strokeWidth="0.5" strokeDasharray="2 4" className="opacity-30" />
+        <circle cx="50" cy="50" r="41" stroke="#D4AF37" strokeWidth="0.5" className="opacity-20" />
+        
+        {/* Crescent Moon */}
+        <path 
+          d="M58 22 C39 22 24 37 24 56 C24 75 39 90 58 90 C45 90 34 79 34 56 C34 33 45 22 58 22 Z" 
+          fill={`url(#${gradientId})`}
+          filter="url(#crescent-glow-2)"
+          stroke="#5a420b"
+          strokeWidth="0.5"
+          className="drop-shadow-[0_2px_6px_rgba(212,175,55,0.3)]"
+        />
+
+        {/* Dynamic 8-Point Rub el Hizb Star shining beautifully in the crescent opening */}
+        <g transform="translate(64, 56) scale(0.85)">
+          {/* Back square */}
+          <polygon 
+            points="-12,0 0,-12 12,0 0,12" 
+            fill="url(#emerald-star-grad)" 
+            stroke={`url(#${gradientId})`} 
+            strokeWidth="1.5" 
+          />
+          {/* Rotated square */}
+          <polygon 
+            points="-8.48,-8.48 8.48,-8.48 8.48,8.48 -8.48,8.48" 
+            fill="url(#emerald-star-grad)" 
+            stroke={`url(#${gradientId})`} 
+            strokeWidth="1.5" 
+          />
+          {/* Inner gold core */}
+          <circle cx="0" cy="0" r="4" fill={`url(#${gradientId})`} />
+          <circle cx="0" cy="0" r="1.5" fill="#FFF" className="animate-ping" style={{ animationDuration: '3s' }} />
+        </g>
       </svg>
     );
   }
+
   if (type === 'kaaba') {
     return (
-      <svg viewBox="0 0 100 100" className={`${className} text-[#D4AF37] fill-none stroke-current`} strokeWidth="2">
-        <polygon points="50,15 85,28 85,68 50,85 15,68 15,28" fill="currentColor" fillOpacity="0.05" />
-        <polygon points="50,30 15,18 15,58 50,70" fill="currentColor" fillOpacity="0.15" />
-        <polygon points="54,30 85,18 85,58 50,70" fill="currentColor" fillOpacity="0.25" />
-        <polygon points="15,24 50,36 85,24 85,28 50,40 15,28" fill="currentColor" />
-        <path d="M50,70 V30" />
+      <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id={gradientId} x1="15%" y1="15%" x2="85%" y2="85%">
+            <stop offset="0%" stopColor="#FFECA1" />
+            <stop offset="40%" stopColor="#E9C149" />
+            <stop offset="70%" stopColor="#C39A2B" />
+            <stop offset="100%" stopColor="#87620F" />
+          </linearGradient>
+          <linearGradient id="kaaba-wall-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#2D2D2D" />
+            <stop offset="100%" stopColor="#121212" />
+          </linearGradient>
+          <linearGradient id="kaaba-wall-light" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#4A4A4A" />
+            <stop offset="100%" stopColor="#1F1F1F" />
+          </linearGradient>
+        </defs>
+        {/* Surrounding Islamic Arched Outer Border */}
+        <path d="M50 4 C15 15 15 35 15 80 L85 80 C85 35 85 15 50 4 Z" stroke={`url(#${gradientId})`} strokeWidth="1" strokeDasharray="3 3" className="opacity-30" />
+
+        {/* Isometric Kaaba Building */}
+        <g transform="translate(0, 5)">
+          {/* Base shadow */}
+          <polygon points="50,82 84,65 50,48 16,65" fill="#000" className="opacity-30 blur-[2px]" />
+          
+          {/* Left Wall (Shadow Side) */}
+          <polygon points="50,80 16,63 16,33 50,50" fill="url(#kaaba-wall-dark)" stroke="#1F1F1F" strokeWidth="0.5" />
+          
+          {/* Right Wall (Direct Light Side) */}
+          <polygon points="54,80 84,65 84,35 54,50" fill="url(#kaaba-wall-light)" stroke="#1F1F1F" strokeWidth="0.5" />
+          
+          {/* Imperial Golden Belt */}
+          <polygon points="16,42 50,59 50,62 16,45" fill={`url(#${gradientId})`} className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" />
+          <line x1="16" y1="42.5" x2="50" y2="59.5" stroke="#FFFFFF" strokeWidth="0.5" className="opacity-40" />
+          
+          <polygon points="54,59 84,44 84,47 54,62" fill={`url(#${gradientId})`} className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" />
+          <line x1="54" y1="59.5" x2="84" y2="44.5" stroke="#FFFFFF" strokeWidth="0.5" className="opacity-40" />
+          
+          {/* Premium Golden Door detailing on Right Wall */}
+          <polygon points="62,70 70,66 70,52 62,56" fill={`url(#${gradientId})`} stroke="#FFF" strokeWidth="0.25" className="drop-shadow-[0_1px_4px_rgba(212,175,55,0.4)]" />
+          <path d="M62,56 C62,52 70,48 70,52" stroke="#AA7C11" strokeWidth="0.5" />
+        </g>
       </svg>
     );
   }
-  
-  // Default 'mosque' dome graphic
+
+  // Default 'mosque' dome graphic with a gorgeous crescent finial!
   return (
-    <svg viewBox="0 0 100 100" className={`${className} text-[#D4AF37] fill-none stroke-current`} strokeWidth="2">
-      <path d="M50 20 C35 38 40 55 50 55 C60 55 65 38 50 20 Z" fill="currentColor" fillOpacity="0.1" />
-      <path d="M50 14 v6" />
-      <path d="M25 80 V55 L50 40 L75 55 V80 Z" />
-      <path d="M42 80 V68 C42 62 58 62 58 68 V80 Z" fill="currentColor" fillOpacity="0.2" />
-      <path d="M12 80 V40 L16 34 L20 40 V80 Z" />
-      <path d="M16 28 v6" />
-      <path d="M80 80 V40 L84 34 L88 40 V80 Z" />
-      <path d="M84 28 v6" />
-      <path d="M5 80 h90" strokeLinecap="round" />
+    <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={gradientId} x1="15%" y1="15%" x2="85%" y2="85%">
+          <stop offset="0%" stopColor="#FFECA1" />
+          <stop offset="40%" stopColor="#E9C149" />
+          <stop offset="70%" stopColor="#C39A2B" />
+          <stop offset="100%" stopColor="#87620F" />
+        </linearGradient>
+        <linearGradient id="dome-grad" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stopColor="#0B261A" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#10B981" stopOpacity="0.25" />
+        </linearGradient>
+        <linearGradient id="accent-emerald-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#059669" />
+          <stop offset="100%" stopColor="#064E3B" />
+        </linearGradient>
+      </defs>
+
+      {/* Decorative Outer Arch structure */}
+      <path d="M50,11 C15,22 10,48 10,84 L90,84 C90,48 85,22 50,11 Z" stroke={`url(#${gradientId})`} strokeWidth="1" strokeDasharray="2 4" className="opacity-25" />
+
+      {/* Background Soft Glow Aura */}
+      <circle cx="50" cy="40" r="24" fill="url(#dome-grad)" className="opacity-20 filter blur-xl" />
+
+      {/* Left and Right Minarets */}
+      <g stroke={`url(#${gradientId})`} strokeWidth="1.25">
+        <path d="M16,84 V38 L20,32 L24,38 V84" fill="url(#accent-emerald-grad)" fillOpacity="0.1" />
+        <path d="M14,32 H26" strokeWidth="1.5" />
+        <path d="M20,32 V24" />
+        <path d="M19,21 C17,21 17,17 20,17 C21.5,17 22,20 22,21 C22,22.5 20.5,23 19,21" fill={`url(#${gradientId})`} strokeWidth="0.5" />
+        
+        <path d="M76,84 V38 L80,32 L84,38 V84" fill="url(#accent-emerald-grad)" fillOpacity="0.1" />
+        <path d="M74,32 H86" strokeWidth="1.5" />
+        <path d="M80,32 V24" />
+        <path d="M79,21 C77,21 77,17 80,17 C81.5,17 82,20 82,21 C82,22.5 80.5,23 79,21" fill={`url(#${gradientId})`} strokeWidth="0.5" />
+      </g>
+
+      {/* Central Majestic Taj Mahal Dome with 3D gradient */}
+      <path 
+        d="M50,22 C34,40 34,58 34,70 C34,75 35,84 50,84 C65,84 66,75 66,70 C66,58 66,40 50,22 Z" 
+        fill="url(#dome-grad)" 
+        stroke={`url(#${gradientId})`} 
+        strokeWidth="1.5" 
+        className="drop-shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
+      />
+
+      {/* Golden Crescent Finial on top of Central Dome */}
+      <g transform="translate(50, 15) scale(0.7)">
+        <path d="M0,8 V0" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
+        <path 
+          d="M3 -3 C-1.5 -3 -5 -0.5 -5 4 C-5 8.5 -1.5 11.5 3 11.5 C0 11.5 -2.5 9 -2.5 4 C-2.5 -1 0 -3 3 -3 Z" 
+          fill={`url(#${gradientId})`}
+          className="drop-shadow-[0_1px_3px_rgba(212,175,55,0.8)]"
+        />
+      </g>
+
+      {/* Intricate Arched Entrance door */}
+      <path 
+        d="M44,84 V68 C44,61 56,61 56,68 V84 Z" 
+        fill="url(#accent-emerald-grad)" 
+        stroke={`url(#${gradientId})`} 
+        strokeWidth="1.25" 
+      />
+      <path d="M50,61 V84" stroke={`url(#${gradientId})`} strokeWidth="0.5" strokeDasharray="1 2" className="opacity-60" />
+
+      {/* Solid ground foundation line */}
+      <line x1="8" y1="84" x2="92" y2="84" stroke={`url(#${gradientId})`} strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 };
