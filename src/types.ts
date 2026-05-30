@@ -49,6 +49,16 @@ export interface MosqueConfig {
   longitude?: number;
   calculationMethod?: 'MuslimWorldLeague' | 'Egyptian' | 'Karachi' | 'UmmAlQura' | 'Dubai' | 'MoonsightingCommittee' | 'NorthAmerica' | 'Kuwait' | 'Qatar' | 'Singapore' | 'Tehran' | 'Turkey' | 'Other';
   madhab?: 'Shafi' | 'Hanafi';
+
+  // SaaS Integration Fields
+  mosqueCode?: string;
+  adminPassword?: string;
+  subscriptionPlan?: 'trial' | 'basic' | 'standard' | 'premium' | 'expired';
+  trialStartDate?: string;
+  trialEndDate?: string;
+  approvalStatus?: 'Pending Approval' | 'Approved' | 'Disabled';
+  managerName?: string;
+  managerEmail?: string;
 }
 
 export interface SyncData {

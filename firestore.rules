@@ -37,7 +37,7 @@ service cloud.firestore {
     // Mosque dashboard collection
     match /mosqueData/{dashboardId} {
       allow get: if true;
-      allow list: if false; // Block query listing to prevent scraping - we query specific dashboardIds directly!
+      allow list: if true; // Allow listing so the directory can load mosques
       
       allow create: if isSignedIn() 
                     && isValidId(dashboardId) 
@@ -48,6 +48,12 @@ service cloud.firestore {
                     && isDashboardValid(incoming());
                     
       allow delete: if false; // The dashboard configuration cannot be deleted
+    }
+
+    // Mosque registrations collection
+    match /mosqueRegistrations/{registrationId} {
+      allow create: if true; // Anyone can apply for registration
+      allow read, write: if isSignedIn() && request.auth.token.email == "antakajunior3@gmail.com" && request.auth.token.email_verified == true;
     }
   }
 }

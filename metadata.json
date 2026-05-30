@@ -1,6 +1,6 @@
 {
   "name": "Mosque Prayer Time Dashboard",
   "description": "A real-time, highly readable prayer time dashboard and admin panel designed for TVs and mobile devices.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

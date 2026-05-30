@@ -50,7 +50,9 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
     isAdmin,
     data,
     mosqueSlug,
-    updateConfig
+    updateConfig,
+    mosqueAdmin,
+    logoutMosqueAdmin
   } = useDashboard();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -558,7 +560,7 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
                   </button>
                 )}
 
-                {onEnterAdminConsole && (
+                {onEnterAdminConsole && isAdmin && (
                   <button
                     onClick={() => {
                       onEnterAdminConsole();
@@ -594,19 +596,34 @@ export const AuthMenu: React.FC<AuthMenuProps> = ({
             </div>
 
             {/* 8. Logout Session Actions */}
-            {adminUser && (
-              <div className="pt-3">
-                <button
-                  onClick={() => {
-                    logout();
-                    setIsOpen(false);
-                  }}
-                  className="w-full h-9 flex items-center justify-center gap-2 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/20 text-rose-400 text-xs font-bold rounded-lg transition-colors cursor-pointer select-none"
-                  id="auth-logout-btn"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Exit Session (Sign Out)</span>
-                </button>
+            {(adminUser || mosqueAdmin) && (
+              <div className="pt-3 space-y-2">
+                {mosqueAdmin && (
+                  <button
+                    onClick={() => {
+                      logoutMosqueAdmin();
+                      setIsOpen(false);
+                    }}
+                    className="w-full h-9 flex items-center justify-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/25 border border-[#D4AF37]/25 text-[#D4AF37] text-xs font-bold rounded-lg transition-colors cursor-pointer select-none font-sans"
+                    id="mosque-admin-logout-btn"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Logout Mosque Admin</span>
+                  </button>
+                )}
+                {adminUser && (
+                  <button
+                    onClick={() => {
+                      logout();
+                      setIsOpen(false);
+                    }}
+                    className="w-full h-9 flex items-center justify-center gap-2 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/20 text-rose-400 text-xs font-bold rounded-lg transition-colors cursor-pointer select-none font-sans"
+                    id="auth-logout-btn"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Exit Session (Sign Out)</span>
+                  </button>
+                )}
               </div>
             )}
           </motion.div>

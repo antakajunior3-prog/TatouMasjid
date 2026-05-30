@@ -23,32 +23,28 @@ export const JummahSection: React.FC<{ isTVMode: boolean }> = ({ isTVMode }) => 
         </div>
 
         {/* Jummah Sessions Grid */}
-        <div className={`grid gap-4 ${isTVMode ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
-          {data.jummah.map((session, index) => (
+        <div className="grid gap-4 grid-cols-1">
+          {data.jummah.slice(0, 1).map((session, index) => (
             <div
               key={session.id || index}
-              className="p-4 rounded-2xl bg-black/25 border border-white/5 relative overflow-hidden flex flex-col justify-between"
+              className="p-5 rounded-2xl bg-black/25 border border-white/5 relative overflow-hidden flex flex-col justify-between"
             >
-              <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-[#D4AF37]/10 text-amber-300 border border-[#D4AF37]/20 uppercase">
-                Session {index + 1}
-              </div>
-
               <div>
-                <h4 className="text-sm font-bold text-[#D4AF37] font-sans">
-                  {session.name}
+                <h4 className="text-base font-bold text-[#D4AF37] font-sans">
+                  {session.name || "Friday Jummah Prayer"}
                 </h4>
                 
                 {/* Timings */}
-                <div className="grid grid-cols-2 gap-2 mt-3 mb-4">
-                  <div className="p-2 rounded-xl bg-white/5 border border-white/5">
-                    <div className="text-[9px] text-stone-400 uppercase font-mono">Khutbah</div>
-                    <div className="text-base font-mono font-bold text-white mt-0.5">
+                <div className="grid grid-cols-2 gap-3 mt-3 mb-4">
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                    <div className="text-[10px] text-stone-400 uppercase font-mono">Khutbah</div>
+                    <div className="text-lg font-mono font-bold text-white mt-0.5">
                       {session.khutbahTime}
                     </div>
                   </div>
-                  <div className="p-2 rounded-xl bg-white/5 border border-white/5">
-                    <div className="text-[9px] text-stone-400 uppercase font-mono">Iqamah</div>
-                    <div className="text-base font-mono font-bold text-emerald-400 mt-0.5">
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                    <div className="text-[10px] text-stone-400 uppercase font-mono">Iqamah</div>
+                    <div className="text-lg font-mono font-bold text-emerald-400 mt-0.5">
                       {session.iqamahTime}
                     </div>
                   </div>
@@ -56,13 +52,13 @@ export const JummahSection: React.FC<{ isTVMode: boolean }> = ({ isTVMode }) => 
               </div>
 
               {/* Speaker Khateeb info */}
-              <div className="flex items-center gap-2.5 pt-2 border-t border-white/5">
-                <div className="p-1.5 rounded-lg bg-white/5">
-                  <UserRound className="w-3.5 h-3.5 text-stone-400" />
+              <div className="flex items-center gap-2.5 pt-3 border-t border-white/5">
+                <div className="p-2 rounded-lg bg-white/5">
+                  <UserRound className="w-4 h-4 text-stone-400" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[8px] text-stone-500 uppercase font-mono">Khateeb / Speaker</div>
-                  <div className="text-xs font-medium text-slate-200 truncate" id={`khateeb-session-${index}`}>
+                  <div className="text-[9px] text-stone-500 uppercase font-mono">Khateeb / Speaker</div>
+                  <div className="text-sm font-medium text-slate-200 truncate" id={`khateeb-session-${index}`}>
                     {session.khateeb || "TBD"}
                   </div>
                 </div>

@@ -7,8 +7,13 @@ import { JummahSection } from './components/JummahSection';
 import { PinLockOverlay } from './components/PinLockOverlay';
 import { AdminConsole } from './components/AdminConsole';
 import { ContactCard } from './components/ContactCard';
+import { MosqueMap } from './components/MosqueMap';
+import { SubscriptionModal } from './components/SubscriptionModal';
+import { SubscriptionStatusBar } from './components/SubscriptionStatusBar';
+import { SubscriptionLock } from './components/SubscriptionLock';
 import { MultiMosqueSelector } from './components/MultiMosqueSelector';
 import { AuthMenu } from './components/AuthMenu';
+import { RegisterMosquePage, MosqueAdminLoginPage, SuperAdminDashboardPage } from './components/SaaSPages';
 import { getNextPrayer } from './utils';
 import { VISUAL_THEMES } from './components/ThemeStyles';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,7 +26,8 @@ import {
   Lock,
   Info,
   MapPin,
-  Globe
+  Globe,
+  ShieldAlert
 } from 'lucide-react';
 
 // Handcrafted responsive Islamic preset SVG vectors
@@ -242,10 +248,11 @@ const LogoIcon: React.FC<{ type: string; className?: string }> = ({ type, classN
 };
 
 function MainDashboard() {
-  const { data, isLoading, isAdmin, mosqueSlug, selectMosque } = useDashboard();
+  const { data, isLoading, isAdmin, mosqueSlug, selectMosque, subscription } = useDashboard();
   const [isTVMode, setIsTVMode] = useState(false);
   const [isAdminConsoleOpen, setIsAdminConsoleOpen] = useState(false);
   const [isPinOverlayOpen, setIsPinOverlayOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Countdowns anchor timing updates
@@ -268,9 +275,45 @@ function MainDashboard() {
     );
   }
 
+  // If specific SaaS paths are visited, render the corresponding views
+  if (mosqueSlug === 'register-mosque') {
+    return <RegisterMosquePage />;
+  }
+  if (mosqueSlug === 'admin-login') {
+    return <MosqueAdminLoginPage />;
+  }
+  if (mosqueSlug === 'super-admin') {
+    return <SuperAdminDashboardPage />;
+  }
+
   // If no mosque is selected, show the central directory Selector Page
   if (!mosqueSlug) {
     return <MultiMosqueSelector />;
+  }
+
+  // deactivation check if mosque is disabled
+  if (data.config && data.config.approvalStatus === 'Disabled') {
+    return (
+      <div className="fixed inset-0 bg-[#06140E] flex flex-col justify-center items-center text-center p-8 select-none">
+        <div className="max-w-md p-8 bg-stone-900/95 rounded-3xl border border-rose-500/35 text-stone-200 shadow-2xl">
+          <div className="mx-auto w-14 h-14 bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-400 mb-5 border border-rose-500/20">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h3 className="text-sm font-bold uppercase tracking-widest text-[#D4AF37] font-sans mt-0">
+            Sanctuary Suspended
+          </h3>
+          <p className="text-xs text-stone-300 leading-relaxed mt-3 font-sans">
+            This display terminal board has been deactivated by the platform owner. Please contact platform administration or customer support for assistance.
+          </p>
+          <button
+            onClick={() => selectMosque('')}
+            className="mt-6 px-5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white rounded-xl text-xs font-semibold cursor-pointer border border-white/5 active:scale-95 transition-all"
+          >
+            Go back to Directory
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const theme = VISUAL_THEMES[data.config.themeId] || VISUAL_THEMES['editorial-aesthetic'];
@@ -278,6 +321,10 @@ function MainDashboard() {
 
   // Quick auth verification login
   const handleAdminClick = () => {
+    if (subscription.status === 'expired') {
+      setIsPricingOpen(true);
+      return;
+    }
     if (isAdmin) {
       setIsAdminConsoleOpen(true);
     } else {
@@ -292,6 +339,42 @@ function MainDashboard() {
 
   // Render landscape dynamic Large TV Mode
   if (isTVMode) {
+    if (subscription.status === 'expired' || subscription.status === 'basic') {
+      return (
+        <div className={`fixed inset-0 w-screen h-screen ${theme.bgClass} flex flex-col justify-center items-center text-center p-8 overflow-hidden`}>
+          <div className="p-5 bg-stone-900/90 rounded-3xl border border-rose-500/25 text-[#D4AF37] shadow-2xl mb-4 max-w-md">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-[#D4AF37] font-sans">
+              {subscription.status === 'expired' ? "Evaluation Period Expired" : "Standard Plan Required"}
+            </h3>
+            <p className="text-[11px] text-stone-300 leading-relaxed mt-2 font-sans">
+              {subscription.status === 'expired' 
+                ? "Your 30-day evaluation trial has ended. Upgrade to a Standard or Premium package to reactivate this TV screen broadcast view."
+                : "The widescreen TV screen broadcast view requires an active Standard or Premium subscriber package."}
+            </p>
+            <div className="mt-5 flex items-center justify-center gap-3">
+              <button
+                onClick={() => {
+                  setIsTVMode(false);
+                  setIsPricingOpen(true);
+                }}
+                className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-black bg-[#D4AF37] rounded-xl font-sans hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                id="tv-lock-upgrade"
+              >
+                Upgrade Plan
+              </button>
+              <button
+                onClick={() => setIsTVMode(false)}
+                className="px-4 py-1.5 text-[10px] font-semibold text-stone-300 hover:text-white hover:bg-white/10 border border-white/10 rounded-xl font-sans transition-all active:scale-95 cursor-pointer"
+                id="tv-lock-exit"
+              >
+                Exit Layout
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={`fixed inset-0 w-screen h-screen ${theme.bgClass} p-6 flex flex-col justify-between overflow-hidden transition-colors duration-500`}>
         {/* TV Header row */}
@@ -374,15 +457,17 @@ function MainDashboard() {
             >
               <span>Exit TV Mode</span>
             </button>
-            <button
-              onClick={handleAdminClick}
-              className="p-2.5 rounded-xl bg-white/5 hover:bg-amber-400/10 text-stone-400 hover:text-[#D4AF37] border border-white/5 transition-colors cursor-pointer"
-              title="Admin console lock"
-              aria-label="Admin settings lock"
-              id="tv-lock-btn"
-            >
-              <Lock className="w-4 h-4" />
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleAdminClick}
+                className="p-2.5 rounded-xl bg-white/5 hover:bg-amber-400/10 text-stone-400 hover:text-[#D4AF37] border border-white/5 transition-colors cursor-pointer"
+                title="Admin console lock"
+                aria-label="Admin settings lock"
+                id="tv-lock-btn"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -398,31 +483,9 @@ function MainDashboard() {
     );
   }
 
-  // Render Admin Console viewport
+  // Render Dedicated Mosque Admin Dashboard Website viewport
   if (isAdminConsoleOpen) {
-    return (
-      <div className={`min-h-screen w-full ${theme.bgClass} flex flex-col transition-colors duration-500`}>
-        <header className="border-b border-white/15 py-4 px-6 flex justify-between items-center bg-black/10">
-          <div className="flex items-center gap-2">
-            <MoonStar className="w-5 h-5 text-[#D4AF37]" />
-            <span className="font-sans font-bold text-slate-100 flex items-center gap-2">
-              <span>{data.config.name}</span>
-              <span className="text-xs text-stone-400 font-normal">({data.config.city}, {data.config.country})</span>
-            </span>
-          </div>
-          <button
-            onClick={() => setIsAdminConsoleOpen(false)}
-            className="text-xs text-stone-300 hover:text-white px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-            id="nav-exit-admin"
-          >
-            Go To Dashboard
-          </button>
-        </header>
-        <main className="flex-grow p-4 md:p-8 max-w-7xl mx-auto w-full">
-          <AdminConsole onExit={() => setIsAdminConsoleOpen(false)} />
-        </main>
-      </div>
-    );
+    return <MosqueAdminLoginPage onExit={() => setIsAdminConsoleOpen(false)} />;
   }
 
   // Render Standard mobile friendly layout
@@ -472,18 +535,16 @@ function MainDashboard() {
               <Tv className="w-4 h-4" />
               <span>TV screen</span>
             </button>
-            <button
-              onClick={handleAdminClick}
-              className={`h-10 px-3 md:px-4 rounded-xl font-sans text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer ${
-                isAdmin 
-                  ? 'bg-emerald-600/10 border border-emerald-500/30 text-emerald-300' 
-                  : 'bg-white/5 hover:bg-white/10 border border-white/10 text-stone-300'
-              }`}
-              id="standard-admin-btn"
-            >
-              {isAdmin ? <Lock className="w-4 h-4 text-emerald-400" /> : <Settings className="w-4 h-4" />}
-              <span>{isAdmin ? "Admin Active" : "Configure"}</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleAdminClick}
+                className="h-10 px-3 md:px-4 rounded-xl font-sans text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer bg-emerald-600/10 border border-emerald-500/30 text-emerald-300"
+                id="standard-admin-btn"
+              >
+                <Lock className="w-4 h-4 text-emerald-400" />
+                <span>Admin Active</span>
+              </button>
+            )}
             <AuthMenu 
               onSelectAllMosques={() => selectMosque('')}
               onEnterTVMode={() => setIsTVMode(true)}
@@ -492,6 +553,8 @@ function MainDashboard() {
           </div>
         </div>
       </header>
+
+      <SubscriptionStatusBar onUpgradeClick={() => setIsPricingOpen(true)} />
 
       {/* Main viewport panels */}
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
@@ -510,14 +573,23 @@ function MainDashboard() {
           <div className="lg:col-span-2">
             <ClockAndCountdown isTVMode={false} />
           </div>
-          <div className="flex flex-col gap-6 justify-between">
-            <JummahSection isTVMode={false} />
-            <ContactCard isTVMode={false} />
+          <div className="flex flex-col gap-6">
+            <SubscriptionLock requiredPlan="standard" onUpgradeClick={() => setIsPricingOpen(true)}>
+              <JummahSection isTVMode={false} />
+            </SubscriptionLock>
+            <SubscriptionLock requiredPlan="basic" onUpgradeClick={() => setIsPricingOpen(true)}>
+              <ContactCard isTVMode={false} />
+            </SubscriptionLock>
+            <SubscriptionLock requiredPlan="standard" onUpgradeClick={() => setIsPricingOpen(true)}>
+              <MosqueMap />
+            </SubscriptionLock>
           </div>
         </div>
 
         {/* Row 2: Announcements Slideshow bulletins */}
-        <AnnouncementsSlideshow />
+        <SubscriptionLock requiredPlan="standard" onUpgradeClick={() => setIsPricingOpen(true)}>
+          <AnnouncementsSlideshow />
+        </SubscriptionLock>
 
         {/* Row 3: Standard prayers block */}
         <div className="space-y-4">
@@ -539,6 +611,12 @@ function MainDashboard() {
           <PinLockOverlay 
             onClose={() => setIsPinOverlayOpen(false)} 
             onSuccess={handleAdminSuccess}
+          />
+        )}
+        {isPricingOpen && (
+          <SubscriptionModal 
+            isOpen={isPricingOpen} 
+            onClose={() => setIsPricingOpen(false)} 
           />
         )}
       </AnimatePresence>

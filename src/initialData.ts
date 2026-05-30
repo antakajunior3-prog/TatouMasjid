@@ -14,7 +14,7 @@ export const initialSyncData: SyncData = {
     themeId: 'editorial-aesthetic',
     
     // Default prayer calculations settings
-    useCalculatedTimes: true,
+    useCalculatedTimes: false,
     latitude: 51.5074,
     longitude: -0.1278,
     calculationMethod: 'MuslimWorldLeague',
@@ -79,17 +79,10 @@ export const initialSyncData: SyncData = {
   jummah: [
     {
       id: 'jummah1',
-      name: 'First Jummah',
+      name: 'Friday Jummah',
       khutbahTime: '13:00',
       iqamahTime: '13:20',
       khateeb: 'Sheikh Dr. Ahmed El-Amin'
-    },
-    {
-      id: 'jummah2',
-      name: 'Second Jummah',
-      khutbahTime: '14:00',
-      iqamahTime: '14:20',
-      khateeb: 'Imam Yasir Qadhi'
     }
   ],
   announcements: [

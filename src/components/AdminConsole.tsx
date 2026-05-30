@@ -43,7 +43,9 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
     deleteAnnouncement,
     addQuote,
     deleteQuote,
-    logout
+    logout,
+    isAdmin,
+    saveManualPrayerTimes
   } = useDashboard();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('prayers');
@@ -55,10 +57,44 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
   const [newQuoteText, setNewQuoteText] = useState('');
   const [newQuoteSource, setNewQuoteSource] = useState('');
 
+  // Local form states for prayer editing and calculations toggle
+  const [automaticCalculationEnabled, setAutomaticCalculationEnabled] = useState<boolean>(
+    data.config.useCalculatedTimes
+  );
+  const [localPrayers, setLocalPrayers] = useState<PrayerTime[]>(data.prayers);
+  const [localJummah, setLocalJummah] = useState<JummahSession[]>(data.jummah);
+  const [showSuccessNotification, setShowSuccessNotification] = useState<boolean>(false);
+
+  // Synchronize local states with context updates in real-time
+  React.useEffect(() => {
+    setLocalPrayers(data.prayers);
+    setLocalJummah(data.jummah);
+    setAutomaticCalculationEnabled(data.config.useCalculatedTimes);
+  }, [data.prayers, data.jummah, data.config.useCalculatedTimes]);
+
   // Local config edits (saved instantly, but tracked locally to support simple form states)
   const handleConfigChange = (field: string, value: any) => {
     updateConfig({ [field]: value });
   };
+
+  // Guard editing with full Admin restriction
+  if (!isAdmin) {
+    return (
+      <div className="p-8 text-center max-w-md mx-auto rounded-3xl bg-neutral-900 border border-white/5 space-y-4">
+        <Lock className="w-12 h-12 text-rose-500 mx-auto" />
+        <h2 className="text-xl font-bold text-white">Access Denied</h2>
+        <p className="text-xs text-stone-400">
+          This panel is restricted to verified administrators. Please authenticate with your PIN or login details.
+        </p>
+        <button
+          onClick={onExit}
+          className="px-4 py-2 rounded-lg bg-neutral-800 text-stone-300 text-xs hover:bg-neutral-700 font-medium cursor-pointer"
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   // Safe handler to exit dashboard console
   const handleLogout = () => {
@@ -143,15 +179,62 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
 
       {/* Tab Panels content */}
       <div className="min-h-[350px]">
+
+        {/* Success Toast Notification Banner */}
+        {showSuccessNotification && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between animate-fadeIn" id="success-notification">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span>Timings updated & synchronized successfully across all active mosque displays!</span>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => setShowSuccessNotification(false)}
+              className="text-stone-400 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         
         {/* PRAYER TIMINGS TAB */}
         {activeTab === 'prayers' && (
-          <div className="space-y-4">
-            {data.config.useCalculatedTimes ? (
+          <div className="space-y-6">
+            {/* Automatic Calculations Toggle Card */}
+            <div className="p-5 rounded-2xl bg-black/20 border border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="space-y-1">
+                <span className="font-extrabold text-white text-sm font-sans flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[#D4AF37]" />
+                  Automatic Prayer Calculations
+                </span>
+                <p className="text-xs text-stone-400 max-w-xl">
+                  {automaticCalculationEnabled 
+                    ? "Currently computed dynamically using GPS coordinates. Manual inputs are locked." 
+                    : "Automatic calculations are disabled. Manual timings and custom offsets are active."}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAutomaticCalculationEnabled(!automaticCalculationEnabled)}
+                  className={`h-11 px-6 rounded-xl font-bold font-sans text-xs transition-colors pointer-events-auto cursor-pointer ${
+                    automaticCalculationEnabled
+                      ? 'bg-[#D4AF37] text-black hover:bg-[#c49f2f]'
+                      : 'bg-[#ff5555]/10 text-[#ff5555] border border-[#ff5555]/20 hover:bg-[#ff5555]/20'
+                  }`}
+                  id="tab-toggle-calculations-btn"
+                >
+                  {automaticCalculationEnabled ? "Calculations Active: ON" : "Calculations Active: OFF"}
+                </button>
+              </div>
+            </div>
+
+            {automaticCalculationEnabled ? (
               <div className="p-4 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-start gap-3">
                 <Globe className="w-5 h-5 text-[#D4AF37] shrink-0 mt-0.5 animate-pulse" />
                 <p className="text-xs text-stone-300 leading-relaxed font-sans">
-                  <strong className="text-[#D4AF37]">Automatic Calculations Active:</strong> The Adhan times are calculated dynamically for <strong className="text-white">today</strong> based on latitude <span className="font-mono text-white bg-black/40 px-1 py-0.5 rounded">{data.config.latitude ?? 0}°</span> and longitude <span className="font-mono text-white bg-black/40 px-1 py-0.5 rounded">{data.config.longitude ?? 0}°</span>. Manual timing overrides are currently locked. If you wish to set custom manual times, please toggle off automatic calculations in the <strong className="text-white">Settings</strong> tab.
+                  <strong className="text-[#D4AF37]">Automatic Calculations Active:</strong> The Adhan times are calculated dynamically for <strong className="text-white">today</strong> based on latitude <span className="font-mono text-white bg-black/40 px-1 py-0.5 rounded">{data.config.latitude ?? 0}°</span> and longitude <span className="font-mono text-white bg-black/40 px-1 py-0.5 rounded">{data.config.longitude ?? 0}°</span>. Manual timing overrides are currently locked. If you wish to set custom manual times, please toggle off automatic calculations above.
                 </p>
               </div>
             ) : (
@@ -165,7 +248,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {data.prayers.map((prayer) => {
+              {localPrayers.map((prayer) => {
                 const isSunrise = prayer.id === 'sunrise';
                 return (
                   <div key={prayer.id} className="p-4 rounded-2xl bg-black/20 border border-white/5 flex flex-col justify-between">
@@ -186,10 +269,13 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
                         <input
                           type="time"
                           value={prayer.adhan}
-                          disabled={data.config.useCalculatedTimes}
-                          onChange={(e) => updatePrayerTime(prayer.id, { adhan: e.target.value })}
+                          disabled={automaticCalculationEnabled}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLocalPrayers(prev => prev.map(p => p.id === prayer.id ? { ...p, adhan: val } : p));
+                          }}
                           className={`w-full h-10 px-2 rounded-lg font-mono text-sm ${theme.inputClass} ${
-                            data.config.useCalculatedTimes ? 'opacity-50 cursor-not-allowed bg-stone-900/40 border-stone-800' : ''
+                            automaticCalculationEnabled ? 'opacity-50 cursor-not-allowed bg-stone-900/40 border-stone-800' : ''
                           }`}
                           id={`input-adhan-${prayer.id}`}
                         />
@@ -201,8 +287,14 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
                           <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Iqamah Type</label>
                           <select
                             value={prayer.iqamahType}
-                            onChange={(e) => updatePrayerTime(prayer.id, { iqamahType: e.target.value as 'fixed' | 'relative' })}
-                            className={`w-full h-10 px-2 rounded-lg text-xs ${theme.inputClass}`}
+                            disabled={automaticCalculationEnabled}
+                            onChange={(e) => {
+                              const val = e.target.value as 'fixed' | 'relative';
+                              setLocalPrayers(prev => prev.map(p => p.id === prayer.id ? { ...p, iqamahType: val } : p));
+                            }}
+                            className={`w-full h-10 px-2 rounded-lg text-xs ${theme.inputClass} ${
+                              automaticCalculationEnabled ? 'opacity-50 cursor-not-allowed bg-stone-900/40 border-stone-800' : ''
+                            }`}
                             id={`input-iqamah-type-${prayer.id}`}
                           >
                             <option value="relative">Mins After</option>
@@ -227,8 +319,14 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
                               min="0"
                               max="60"
                               value={prayer.iqamahValue}
-                              onChange={(e) => updatePrayerTime(prayer.id, { iqamahValue: e.target.value })}
-                              className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass}`}
+                              disabled={automaticCalculationEnabled}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setLocalPrayers(prev => prev.map(p => p.id === prayer.id ? { ...p, iqamahValue: val } : p));
+                              }}
+                              className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass} ${
+                                automaticCalculationEnabled ? 'opacity-50 cursor-not-allowed bg-stone-900/40 border-stone-800' : ''
+                              }`}
                               placeholder="e.g. 15"
                               id={`input-iqamah-val-rel-${prayer.id}`}
                             />
@@ -241,8 +339,14 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
                             <input
                               type="time"
                               value={prayer.iqamahValue}
-                              onChange={(e) => updatePrayerTime(prayer.id, { iqamahValue: e.target.value })}
-                              className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass}`}
+                              disabled={automaticCalculationEnabled}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setLocalPrayers(prev => prev.map(p => p.id === prayer.id ? { ...p, iqamahValue: val } : p));
+                              }}
+                              className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass} ${
+                                automaticCalculationEnabled ? 'opacity-50 cursor-not-allowed bg-stone-900/40 border-stone-800' : ''
+                              }`}
                               id={`input-iqamah-val-fixed-${prayer.id}`}
                             />
                           </div>
@@ -252,6 +356,23 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Save Buttons Row */}
+            <div className="flex justify-end pt-4 border-t border-white/5">
+              <button
+                type="button"
+                onClick={async () => {
+                  await saveManualPrayerTimes(automaticCalculationEnabled, localPrayers, localJummah);
+                  setShowSuccessNotification(true);
+                  setTimeout(() => setShowSuccessNotification(false), 3500);
+                }}
+                className="h-12 px-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-sans text-xs font-semibold flex items-center justify-center gap-2 border border-emerald-500/20 shadow-lg cursor-pointer transition-colors"
+                id="save-timings-btn"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Timings & Sync Live</span>
+              </button>
             </div>
           </div>
         )}
@@ -265,67 +386,94 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onExit }) => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
-              {data.jummah.map((session, sIdx) => (
-                <div key={session.id} className="p-5 rounded-2xl bg-black/20 border border-white/5 space-y-4 relative">
-                  <div className="absolute top-4 right-4 px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                    Session {sIdx + 1}
-                  </div>
+            <div className="grid grid-cols-1 gap-6 animate-fadeIn max-w-xl mx-auto">
+              {localJummah.slice(0, 1).map((session, sIdx) => {
+                return (
+                  <div key={session.id} className="p-5 rounded-2xl bg-black/20 border border-white/5 space-y-4 relative">
+                    <h3 className="text-base font-bold text-[#D4AF37] font-sans mt-0">
+                      Friday Jummah Service Settings
+                    </h3>
 
-                  <h3 className="text-base font-bold text-white font-sans mt-0">
-                    Service Settings
-                  </h3>
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Session Label</label>
-                      <input
-                        type="text"
-                        value={session.name}
-                        onChange={(e) => updateJummah(session.id, { name: e.target.value })}
-                        className={`w-full h-10 px-3 rounded-lg text-sm ${theme.inputClass}`}
-                        placeholder="e.g. First Jummah"
-                        id={`input-jummah-name-${sIdx}`}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-3">
                       <div>
-                        <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Khutbah Starts</label>
+                        <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Session Label</label>
                         <input
-                          type="time"
-                          value={session.khutbahTime}
-                          onChange={(e) => updateJummah(session.id, { khutbahTime: e.target.value })}
-                          className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass}`}
-                          id={`input-jummah-khutbah-${sIdx}`}
+                          type="text"
+                          value={session.name}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLocalJummah(prev => prev.map(j => j.id === session.id ? { ...j, name: val } : j));
+                          }}
+                          className={`w-full h-10 px-3 rounded-lg text-sm ${theme.inputClass}`}
+                          placeholder="e.g. First Jummah"
+                          id={`input-jummah-name-${sIdx}`}
                         />
                       </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Khutbah Starts</label>
+                          <input
+                            type="time"
+                            value={session.khutbahTime}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setLocalJummah(prev => prev.map(j => j.id === session.id ? { ...j, khutbahTime: val } : j));
+                            }}
+                            className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass}`}
+                            id={`input-jummah-khutbah-${sIdx}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Iqamah Begins</label>
+                          <input
+                            type="time"
+                            value={session.iqamahTime}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setLocalJummah(prev => prev.map(j => j.id === session.id ? { ...j, iqamahTime: val } : j));
+                            }}
+                            className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass}`}
+                            id={`input-jummah-iqamah-${sIdx}`}
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Iqamah Begins</label>
+                        <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Khateeb (Speaker)</label>
                         <input
-                          type="time"
-                          value={session.iqamahTime}
-                          onChange={(e) => updateJummah(session.id, { iqamahTime: e.target.value })}
-                          className={`w-full h-10 px-3 rounded-lg font-mono text-sm ${theme.inputClass}`}
-                          id={`input-jummah-iqamah-${sIdx}`}
+                          type="text"
+                          value={session.khateeb}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLocalJummah(prev => prev.map(j => j.id === session.id ? { ...j, khateeb: val } : j));
+                          }}
+                          className={`w-full h-10 px-3 rounded-lg text-sm ${theme.inputClass}`}
+                          placeholder="e.g. Sheikh Ahmed"
+                          id={`input-jummah-khateeb-${sIdx}`}
                         />
                       </div>
                     </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase font-mono text-stone-400 block mb-1">Khateeb (Speaker)</label>
-                      <input
-                        type="text"
-                        value={session.khateeb}
-                        onChange={(e) => updateJummah(session.id, { khateeb: e.target.value })}
-                        className={`w-full h-10 px-3 rounded-lg text-sm ${theme.inputClass}`}
-                        placeholder="e.g. Sheikh Ahmed"
-                        id={`input-jummah-khateeb-${sIdx}`}
-                      />
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+
+            {/* Save Buttons Row */}
+            <div className="flex justify-end pt-4 border-t border-white/5">
+              <button
+                type="button"
+                onClick={async () => {
+                  await saveManualPrayerTimes(automaticCalculationEnabled, localPrayers, localJummah);
+                  setShowSuccessNotification(true);
+                  setTimeout(() => setShowSuccessNotification(false), 3500);
+                }}
+                className="h-12 px-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-sans text-xs font-semibold flex items-center justify-center gap-2 border border-emerald-500/20 shadow-lg cursor-pointer transition-colors"
+                id="save-jummah-btn"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Friday Jummah & Sync Live</span>
+              </button>
             </div>
           </div>
         )}

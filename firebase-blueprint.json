@@ -72,9 +72,34 @@
         "latitude": { "type": "number" },
         "longitude": { "type": "number" },
         "calculationMethod": { "type": "string", "enum": ["MuslimWorldLeague", "Egyptian", "Karachi", "UmmAlQura", "Dubai", "MoonsightingCommittee", "NorthAmerica", "Kuwait", "Qatar", "Singapore", "Tehran", "Turkey", "Other"] },
-        "madhab": { "type": "string", "enum": ["Shafi", "Hanafi"] }
+        "madhab": { "type": "string", "enum": ["Shafi", "Hanafi"] },
+        "mosqueCode": { "type": "string" },
+        "adminPassword": { "type": "string" },
+        "subscriptionPlan": { "type": "string" },
+        "trialStartDate": { "type": "string" },
+        "trialEndDate": { "type": "string" },
+        "approvalStatus": { "type": "string" },
+        "managerName": { "type": "string" },
+        "managerEmail": { "type": "string" }
       },
       "required": ["name", "logoType", "logoPreset", "address", "city", "country", "pinCode", "hijriAdjustment", "themeId"]
+    },
+    "MosqueRegistration": {
+      "title": "MosqueRegistration",
+      "description": "A pending registration request for a new mosque on the platform.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mosqueName": { "type": "string" },
+        "imamName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "country": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending Approval", "Approved", "Rejected"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "mosqueName", "imamName", "email", "phone", "city", "country", "status", "createdAt"]
     },
     "DashboardData": {
       "title": "DashboardData",
@@ -90,6 +115,10 @@
     "/mosqueData/{dashboardId}": {
       "schema": "DashboardData",
       "description": "The unified real-time dashboard configurations and lists document."
+    },
+    "/mosqueRegistrations/{registrationId}": {
+      "schema": "MosqueRegistration",
+      "description": "Collection of all mosque registration applications."
     }
   }
 }

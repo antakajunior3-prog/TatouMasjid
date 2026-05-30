@@ -4,7 +4,7 @@ import { initialSyncData } from './initialData';
 import { calculatePrayersForMosque } from './utils';
 import { db, auth, rtdb, isFirebaseEnabled, handleFirestoreError, OperationType, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from './firebase';
 import { doc, onSnapshot, setDoc, collection, getDocs } from 'firebase/firestore';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, update, set } from 'firebase/database';
 import { onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 
 interface AllMosqueMeta {
@@ -12,6 +12,14 @@ interface AllMosqueMeta {
   name: string;
   city: string;
   country: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  prayers?: PrayerTime[];
+  jummah?: JummahSession[];
+  phone?: string;
+  approvalStatus?: 'Pending Approval' | 'Approved' | 'Disabled';
+  subscriptionPlan?: 'trial' | 'basic' | 'standard' | 'premium' | 'expired';
 }
 
 interface DashboardContextType {
@@ -39,10 +47,40 @@ interface DashboardContextType {
   updateJummah: (id: string, updates: Partial<JummahSession>) => Promise<void>;
   updateConfig: (updates: Partial<MosqueConfig>) => Promise<void>;
   addAnnouncement: (title: string, content: string) => Promise<void>;
+  updateAnnouncement: (id: string, title: string, content: string) => Promise<void>;
   toggleAnnouncement: (id: string) => Promise<void>;
   deleteAnnouncement: (id: string) => Promise<void>;
   addQuote: (text: string, source: string) => Promise<void>;
+  updateQuote: (id: string, text: string, source: string) => Promise<void>;
   deleteQuote: (id: string) => Promise<void>;
+  saveManualPrayerTimes: (
+    automaticCalculationEnabled: boolean,
+    prayers: PrayerTime[],
+    jummah: JummahSession[]
+  ) => Promise<void>;
+
+  // Subscription and Free trial fields
+  subscription: {
+    status: 'trial' | 'basic' | 'standard' | 'premium' | 'expired';
+    trialStartDate: string;
+    expirationDate: string;
+    packageType: 'None' | 'Basic' | 'Standard' | 'Premium';
+    daysLeft: number;
+  };
+  upgradeSubscription: (plan: 'Basic' | 'Standard' | 'Premium') => Promise<void>;
+  simulateExpiration: () => Promise<void>;
+  simulateResetTrial: () => Promise<void>;
+
+  // Mosque SaaS Systems Integration
+  isSuperAdmin: boolean;
+  mosqueAdmin: { email: string; slug: string } | null;
+  submitRegistration: (fields: { mosqueName: string; managerName: string; email: string; phone: string; city: string; country: string; address: string }) => Promise<boolean>;
+  getRegistrations: () => Promise<any[]>;
+  updateRegistrationStatus: (regId: string, status: 'Approved' | 'Rejected', plan?: string) => Promise<any>;
+  requestLoginOTP: (email: string) => Promise<{ success: boolean; error?: string; code?: string }>;
+  verifyLoginOTP: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
+  loginMosqueAdmin: (code: string, pass: string) => Promise<boolean>;
+  logoutMosqueAdmin: () => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -59,12 +97,26 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const [data, setData] = useState<SyncData>(() => {
-    // Initial sync data baseline
+    // Attempt to load from offline cache based on current URL path slug immediately
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const initialSlug = parts.length > 0 ? parts[0] : '';
+    if (initialSlug) {
+      const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
+      if (offlineDict[initialSlug]) {
+        return offlineDict[initialSlug];
+      }
+    }
     return { ...initialSyncData };
   });
 
   const [allMosques, setAllMosques] = useState<AllMosqueMeta[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const initialSlug = parts.length > 0 ? parts[0] : '';
+    if (!initialSlug) return false;
+    const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
+    return !offlineDict[initialSlug];
+  });
   const [adminUser, setAdminUser] = useState<User | null>(null);
   const [simulatedUser, setSimulatedUser] = useState<any>(() => {
     const cached = localStorage.getItem('mosque_simulated_user');
@@ -74,6 +126,21 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return localStorage.getItem(PIN_AUTH_KEY) === 'true';
   });
   const [rtdbData, setRtdbData] = useState<any>(null);
+
+  const [mosqueAdmin, setMosqueAdmin] = useState<{ email: string; slug: string } | null>(() => {
+    const cached = localStorage.getItem('mosque_admin_session');
+    return cached ? JSON.parse(cached) : null;
+  });
+
+  const isSuperAdmin = (adminUser?.email === 'antakajunior3@gmail.com') || (simulatedUser?.email === 'antakajunior3@gmail.com');
+
+  // If a mosque admin session is active, lock navigation strictly to that mosque's slug
+  useEffect(() => {
+    if (mosqueAdmin && mosqueSlug !== mosqueAdmin.slug) {
+      setMosqueSlug(mosqueAdmin.slug);
+      window.history.pushState({}, '', `/${mosqueAdmin.slug}`);
+    }
+  }, [mosqueAdmin, mosqueSlug]);
 
   // Track popstate to support browser Back/Forward navigation!
   useEffect(() => {
@@ -124,49 +191,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         querySnapshot.forEach((doc) => {
           const docData = doc.data() as SyncData;
           if (docData && docData.config) {
+            const computedPrayers = calculatePrayersForMosque(docData.config, new Date(), docData.prayers || []);
             mosquesList.push({
               slug: doc.id,
               name: docData.config.name,
               city: docData.config.city || '',
-              country: docData.config.country || ''
+              country: docData.config.country || '',
+              address: docData.config.address || '',
+              latitude: docData.config.latitude ?? 51.5074,
+              longitude: docData.config.longitude ?? -0.1278,
+              prayers: computedPrayers,
+              jummah: docData.jummah || [],
+              phone: docData.config.contactPhone || '',
+              approvalStatus: docData.config.approvalStatus,
+              subscriptionPlan: docData.config.subscriptionPlan
             });
           }
         });
 
-        // Seed default template mosques in Firestore if empty
-        if (mosquesList.length === 0) {
-          console.log("No remote mosques found in Firestore. Bootstrapping initial defaults...");
-          const defaultNoor = { ...initialSyncData };
-          const defaultRahma = {
-            ...initialSyncData,
-            config: {
-              ...initialSyncData.config,
-              name: "Masjid Ar-Rahman",
-              city: "New York",
-              country: "United States",
-              address: "123 Faith Rd, NY, USA",
-              contactPhone: "+1 212 555 0199",
-              latitude: 40.7128,
-              longitude: -74.0060,
-              pinCode: "1234",
-              hijriAdjustment: 0,
-              themeId: "emerald-dark" as const
-            }
-          };
-          try {
-            if (auth && !auth.currentUser) {
-              await signInAnonymously(auth);
-            }
-            await setDoc(doc(db, FIRESTORE_COLLECTION, 'tatou-masjid'), defaultNoor);
-            await setDoc(doc(db, FIRESTORE_COLLECTION, 'masjid-rahma'), defaultRahma);
-            mosquesList.push(
-              { slug: 'tatou-masjid', name: "Tatou Masjid", city: "London", country: "United Kingdom" },
-              { slug: 'masjid-rahma', name: "Masjid Ar-Rahman", city: "New York", country: "United States" }
-            );
-          } catch (err) {
-            console.error("Failed to seed default mosques", err);
-          }
-        }
         setAllMosques(mosquesList);
       } catch (error) {
         console.error("Error fetching all mosques:", error);
@@ -176,43 +218,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
       const mosquesList = Object.keys(offlineDict).map(slug => {
         const docData = offlineDict[slug] as SyncData;
+        const computedPrayers = calculatePrayersForMosque(docData.config, new Date(), docData.prayers || []);
         return {
           slug,
           name: docData.config.name,
           city: docData.config.city || '',
-          country: docData.config.country || ''
+          country: docData.config.country || '',
+          address: docData.config.address || '',
+          latitude: docData.config.latitude ?? 51.5074,
+          longitude: docData.config.longitude ?? -0.1278,
+          prayers: computedPrayers,
+          jummah: docData.jummah || [],
+          phone: docData.config.contactPhone || '',
+          approvalStatus: docData.config.approvalStatus,
+          subscriptionPlan: docData.config.subscriptionPlan
         };
       });
 
-      // Seed offline local storage if completely empty
-      if (mosquesList.length === 0) {
-        const defaultList = [
-          { slug: 'tatou-masjid', name: "Tatou Masjid", city: "London", country: "United Kingdom" },
-          { slug: 'masjid-rahma', name: "Masjid Ar-Rahman", city: "New York", country: "United States" }
-        ];
-        const initialDict: Record<string, SyncData> = {};
-        initialDict['tatou-masjid'] = { ...initialSyncData };
-        initialDict['masjid-rahma'] = {
-          ...initialSyncData,
-          config: {
-            ...initialSyncData.config,
-            name: "Masjid Ar-Rahman",
-            city: "New York",
-            country: "United States",
-            address: "123 Faith Rd, NY, USA",
-            contactPhone: "+1 212 555 0199",
-            latitude: 40.7128,
-            longitude: -74.0060,
-            pinCode: "1234",
-            hijriAdjustment: 0,
-            themeId: "emerald-dark"
-          }
-        };
-        localStorage.setItem('mosque_offline_dict', JSON.stringify(initialDict));
-        setAllMosques(defaultList);
-      } else {
-        setAllMosques(mosquesList);
-      }
+      setAllMosques(mosquesList);
     }
   };
 
@@ -221,23 +244,26 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshAllMosques();
   }, [isFirebaseEnabled]);
 
-  // Connect to Firebase Realtime Database for live updates on prayer times and announcements
+  // Connect to Firebase Realtime Database for live updates on prayer times, announcements, and subscription
   useEffect(() => {
-    if (!isFirebaseEnabled || !rtdb) {
+    if (!isFirebaseEnabled || !rtdb || !mosqueSlug) {
       return;
     }
-    const rtdbRef = ref(rtdb, 'mosques/tatoumasjid');
+    const cleanRtdbSlug = mosqueSlug.replace(/[^a-zA-Z0-9]/g, '');
+    const rtdbRef = ref(rtdb, `mosques/${cleanRtdbSlug}`);
     const unsubscribeRtdb = onValue(rtdbRef, (snapshot) => {
       if (snapshot.exists()) {
         const val = snapshot.val();
-        console.log("Realtime Database update for mosques/tatoumasjid received:", val);
+        console.log(`Realtime Database update for mosques/${cleanRtdbSlug} received:`, val);
         setRtdbData(val);
+      } else {
+        setRtdbData(null);
       }
     }, (error) => {
       console.warn("Realtime Database subscription error:", error);
     });
     return () => unsubscribeRtdb();
-  }, [isFirebaseEnabled]);
+  }, [isFirebaseEnabled, mosqueSlug]);
 
   // Sync state with selected Firestore document or offline cache
   useEffect(() => {
@@ -246,32 +272,19 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    setIsLoading(true);
+    const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
+    if (offlineDict[mosqueSlug]) {
+      setData(offlineDict[mosqueSlug]);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
 
     if (!isFirebaseEnabled || !db) {
       // Offline fallback state management helper
       const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
       if (offlineDict[mosqueSlug]) {
         setData(offlineDict[mosqueSlug]);
-      } else if (mosqueSlug === 'tatou-masjid' || mosqueSlug === 'masjid-al-noor') {
-        setData(initialSyncData);
-      } else if (mosqueSlug === 'masjid-rahma') {
-        setData({
-          ...initialSyncData,
-          config: {
-            ...initialSyncData.config,
-            name: "Masjid Ar-Rahman",
-            city: "New York",
-            country: "United States",
-            address: "123 Faith Rd, NY, USA",
-            contactPhone: "+1 212 555 0199",
-            latitude: 40.7128,
-            longitude: -74.0060,
-            pinCode: "1234",
-            hijriAdjustment: 0,
-            themeId: "emerald-dark"
-          }
-        });
       } else {
         // Fallback placeholder dynamically built
         setData({
@@ -300,8 +313,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         offlineDict[mosqueSlug] = remoteData;
         localStorage.setItem('mosque_offline_dict', JSON.stringify(offlineDict));
       } else {
-        // Automatically seed if slug path doesn't exist yet but was selected
-        console.log(`Dynamic mosque '${mosqueSlug}' accessed but doc does not exist. Auto-creating...`);
+        // Non-existent mosque. Use generic fallback local state but DO NOT auto-create in database
+        console.log(`Dynamic mosque '${mosqueSlug}' accessed but doc does not exist. Generic fallback state loaded.`);
         const seededDraft: SyncData = {
           ...initialSyncData,
           config: {
@@ -311,16 +324,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             country: "Update Country"
           }
         };
-        try {
-          if (auth && !auth.currentUser) {
-            await signInAnonymously(auth);
-          }
-          await setDoc(docRef, seededDraft);
-          setData(seededDraft);
-        } catch (error) {
-          console.error("Error automatic seeding dynamic mosque:", error);
-          setData(seededDraft);
-        }
+        setData(seededDraft);
       }
       setIsLoading(false);
     }, (error) => {
@@ -335,6 +339,34 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const selectMosque = (slug: string) => {
     window.history.pushState({}, '', slug ? `/${slug}` : '/');
     setMosqueSlug(slug);
+    
+    // Instantly load data from local caches if present to ensure 0ms UI delay
+    if (slug) {
+      const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
+      if (offlineDict[slug]) {
+        setData(offlineDict[slug]);
+        setIsLoading(false);
+      } else {
+        const found = allMosques.find(m => m.slug === slug);
+        if (found) {
+          setData(prev => ({
+            ...prev,
+            config: {
+              ...prev.config,
+              name: found.name,
+              address: found.address || '',
+              city: found.city,
+              country: found.country,
+              latitude: found.latitude,
+              longitude: found.longitude,
+            },
+            prayers: found.prayers || prev.prayers,
+            jummah: found.jummah || prev.jummah,
+          }));
+          setIsLoading(false);
+        }
+      }
+    }
   };
 
   // Create a new mosque
@@ -355,6 +387,47 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return false;
     }
 
+    // Geocode user city coordinates
+    let lat = 51.5074;
+    let lng = -0.1278;
+
+    const cityLower = city.toLowerCase().trim();
+    const cityMap: Record<string, { lat: number; lng: number }> = {
+      'london': { lat: 51.5074, lng: -0.1278 },
+      'cardiff': { lat: 51.4816, lng: -3.1791 },
+      'new york': { lat: 40.7128, lng: -74.0060 },
+      'ny': { lat: 40.7128, lng: -74.0060 },
+      'toronto': { lat: 43.6532, lng: -79.3832 },
+      'chicago': { lat: 41.8781, lng: -87.6298 },
+      'houston': { lat: 29.7604, lng: -95.3698 },
+      'los angeles': { lat: 34.0522, lng: -118.2437 },
+      'paris': { lat: 48.8566, lng: 2.3522 },
+      'cairo': { lat: 30.0444, lng: 31.2357 },
+      'riyadh': { lat: 24.7136, lng: 46.6753 },
+      'mecca': { lat: 21.3891, lng: 39.8579 },
+      'medina': { lat: 24.5246, lng: 39.5692 },
+      'singapore': { lat: 1.3521, lng: 103.8198 },
+      'sydney': { lat: -33.8688, lng: 151.2093 },
+      'kuala lumpur': { lat: 3.1390, lng: 101.6869 }
+    };
+
+    if (cityMap[cityLower]) {
+      lat = cityMap[cityLower].lat;
+      lng = cityMap[cityLower].lng;
+    } else {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city + ', ' + country)}&limit=1`;
+        const res = await fetch(url, { headers: { 'User-Agent': 'TatouMasjid-App' } });
+        const json = await res.json();
+        if (json && json.length > 0) {
+          lat = parseFloat(json[0].lat);
+          lng = parseFloat(json[0].lon);
+        }
+      } catch (err) {
+        console.error("Geocoding failed, using fallback:", err);
+      }
+    }
+
     const customSyncData: SyncData = {
       config: {
         name,
@@ -367,9 +440,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         pinCode: pin || "1234",
         hijriAdjustment: 0,
         themeId: 'editorial-aesthetic',
-        useCalculatedTimes: true,
-        latitude: 51.5074,
-        longitude: -0.1278,
+        useCalculatedTimes: false,
+        latitude: lat,
+        longitude: lng,
         calculationMethod: 'MuslimWorldLeague',
         madhab: 'Shafi'
       },
@@ -411,7 +484,20 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       localStorage.setItem('mosque_offline_dict', JSON.stringify(offlineDict));
     }
 
-    setAllMosques(prev => [...prev, { slug: cleanSlug, name, city, country }]);
+    setAllMosques(prev => [
+      ...prev,
+      {
+        slug: cleanSlug,
+        name,
+        city,
+        country,
+        address,
+        latitude: lat,
+        longitude: lng,
+        prayers: customSyncData.prayers,
+        jummah: customSyncData.jummah
+      }
+    ]);
     selectMosque(cleanSlug);
     return true;
   };
@@ -501,8 +587,13 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // State mapping for simulated or live Cloud user records
   const activeUser = isFirebaseEnabled ? adminUser : simulatedUser;
 
-  // Derived Admin authorization
-  const isAdmin = pinAuthenticated || !!activeUser;
+  // Derived Admin authorization: Authenticated non-anonymous admin users check, or logged-in mosque admin, or super admin
+  const isAdmin = (
+    (isFirebaseEnabled && !!adminUser && !adminUser.isAnonymous) ||
+    (pinAuthenticated || !!simulatedUser) ||
+    (mosqueAdmin !== null && mosqueAdmin.slug === mosqueSlug) ||
+    isSuperAdmin
+  );
 
   // Persist local and remote records helper
   const saveState = async (updatedData: SyncData) => {
@@ -589,6 +680,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await saveState({ ...data, announcements: nextAnn });
   };
 
+  const updateAnnouncement = async (id: string, title: string, content: string) => {
+    const nextAnn = data.announcements.map(ann => ann.id === id ? { ...ann, title, content } : ann);
+    await saveState({ ...data, announcements: nextAnn });
+  };
+
   const addQuote = async (text: string, source: string) => {
     const newQuote: IslamicQuote = {
       id: 'quote-' + Date.now(),
@@ -603,6 +699,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteQuote = async (id: string) => {
     const nextQuotes = data.quotes.filter(q => q.id !== id);
+    await saveState({ ...data, quotes: nextQuotes });
+  };
+
+  const updateQuote = async (id: string, text: string, source: string) => {
+    const nextQuotes = data.quotes.map(q => q.id === id ? { ...q, text, source } : q);
     await saveState({ ...data, quotes: nextQuotes });
   };
 
@@ -628,24 +729,42 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [data.config, data.prayers, currentCalcDate]);
 
   const resolvedData = React.useMemo(() => {
+    let currentConfig = { ...data.config };
+
+    // Apply overrides if rtdbData is present
+    if (rtdbData) {
+      currentConfig.name = rtdbData.name !== undefined && rtdbData.name !== null ? String(rtdbData.name) : currentConfig.name;
+      currentConfig.city = rtdbData.city !== undefined && rtdbData.city !== null ? String(rtdbData.city) : currentConfig.city;
+      currentConfig.address = rtdbData.mosqueAddress !== undefined && rtdbData.mosqueAddress !== null ? String(rtdbData.mosqueAddress) : currentConfig.address;
+      currentConfig.latitude = rtdbData.latitude !== undefined && rtdbData.latitude !== null ? Number(rtdbData.latitude) : currentConfig.latitude;
+      currentConfig.longitude = rtdbData.longitude !== undefined && rtdbData.longitude !== null ? Number(rtdbData.longitude) : currentConfig.longitude;
+      
+      if (rtdbData.automaticCalculationEnabled !== undefined && rtdbData.automaticCalculationEnabled !== null) {
+        currentConfig.useCalculatedTimes = Boolean(rtdbData.automaticCalculationEnabled);
+      }
+    }
+
+    // Now calculate prayers using the possibly overridden config
+    const computedPrayers = calculatePrayersForMosque(currentConfig, currentCalcDate, data.prayers);
+
     const baseResolved = {
       ...data,
-      prayers: resolvedPrayers
+      config: currentConfig,
+      prayers: computedPrayers
     };
 
-    // Only apply if we are on 'tatou-masjid' and we have rtdbData
-    if (mosqueSlug !== 'tatou-masjid' || !rtdbData) {
+    if (!rtdbData) {
       return baseResolved;
     }
 
-    // Copy prayers and override
+    // Copy prayers and override with manual inputs when calculations are off
     const overriddenPrayers = baseResolved.prayers.map(p => {
       const pId = p.id;
-      if (['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'].includes(pId)) {
+      if (['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'].includes(pId)) {
         // Direct key check (e.g. rtdbData.fajr)
         const rtdbVal = rtdbData[pId as keyof typeof rtdbData];
         
-        // Handle explicit adhan/iqamah keys (e.g. rtdbData.fajr_adhan, rtdbData.fajr_iqamah)
+        // Handle explicit adhan/iqamah keys
         const adhanKey = `${pId}_adhan`;
         const iqamahKey = `${pId}_iqamah`;
         const iqamahValKey = `${pId}_iqamahValue`;
@@ -653,65 +772,100 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const directAdhan = rtdbData[adhanKey as keyof typeof rtdbData];
         const directIqamah = rtdbData[iqamahKey as keyof typeof rtdbData] || rtdbData[iqamahValKey as keyof typeof rtdbData];
         
-        if (directAdhan !== undefined && directAdhan !== null) {
-          const updated = { ...p, adhan: String(directAdhan) };
-          if (directIqamah !== undefined && directIqamah !== null) {
-            updated.iqamahType = 'fixed' as const;
-            updated.iqamahValue = String(directIqamah);
-          }
-          return updated;
-        }
+        let updatedAdhan = p.adhan;
+        let updatedIqamahType = p.iqamahType;
+        let updatedIqamahValue = p.iqamahValue;
 
-        if (rtdbVal !== undefined && rtdbVal !== null) {
-          if (typeof rtdbVal === 'string') {
-            if (rtdbVal.includes('/')) {
-              const parts = rtdbVal.split('/');
-              return {
-                ...p,
-                adhan: parts[0].trim(),
-                iqamahType: 'fixed' as const,
-                iqamahValue: parts[1].trim()
-              };
-            } else if (rtdbVal.includes(',')) {
-              const parts = rtdbVal.split(',');
-              return {
-                ...p,
-                adhan: parts[0].trim(),
-                iqamahType: 'fixed' as const,
-                iqamahValue: parts[1].trim()
-              };
-            } else {
-              return {
-                ...p,
-                adhan: rtdbVal
-              };
-            }
-          } else if (typeof rtdbVal === 'object') {
-            const parsed: Partial<PrayerTime> = {};
-            if ('adhan' in rtdbVal && typeof rtdbVal.adhan === 'string') {
-              parsed.adhan = rtdbVal.adhan;
-            } else if ('time' in rtdbVal && typeof rtdbVal.time === 'string') {
-              parsed.adhan = rtdbVal.time;
-            }
-            
-            if ('iqamah' in rtdbVal && typeof rtdbVal.iqamah === 'string') {
-              parsed.iqamahType = 'fixed' as const;
-              parsed.iqamahValue = rtdbVal.iqamah;
-            } else if ('iqamahValue' in rtdbVal && typeof rtdbVal.iqamahValue === 'string') {
-              parsed.iqamahValue = rtdbVal.iqamahValue;
-              if ('iqamahType' in rtdbVal && typeof rtdbVal.iqamahType === 'string') {
-                parsed.iqamahType = rtdbVal.iqamahType as any;
+        // Adhan times should be overridden only if automatic calculations are OFF
+        if (!currentConfig.useCalculatedTimes) {
+          if (directAdhan !== undefined && directAdhan !== null) {
+            updatedAdhan = String(directAdhan);
+          } else if (rtdbVal !== undefined && rtdbVal !== null) {
+            if (typeof rtdbVal === 'string') {
+              if (rtdbVal.includes('/')) {
+                const parts = rtdbVal.split('/');
+                updatedAdhan = parts[0].trim();
+                updatedIqamahValue = parts[1].trim();
+                updatedIqamahType = 'fixed' as const;
+              } else if (rtdbVal.includes(',')) {
+                const parts = rtdbVal.split(',');
+                updatedAdhan = parts[0].trim();
+                updatedIqamahValue = parts[1].trim();
+                updatedIqamahType = 'fixed' as const;
+              } else {
+                updatedAdhan = rtdbVal;
+              }
+            } else if (typeof rtdbVal === 'object') {
+              if ('adhan' in rtdbVal && typeof rtdbVal.adhan === 'string') {
+                updatedAdhan = rtdbVal.adhan;
+              } else if ('time' in rtdbVal && typeof rtdbVal.time === 'string') {
+                updatedAdhan = rtdbVal.time;
               }
             }
-            return {
-              ...p,
-              ...parsed
-            };
           }
         }
+
+        // Iqamah value overrides can always apply if provided
+        if (pId !== 'sunrise') {
+          if (directIqamah !== undefined && directIqamah !== null) {
+            updatedIqamahType = 'fixed' as const;
+            updatedIqamahValue = String(directIqamah);
+          } else if (rtdbVal !== undefined && rtdbVal !== null && typeof rtdbVal === 'object') {
+            if ('iqamah' in rtdbVal && typeof rtdbVal.iqamah === 'string') {
+              updatedIqamahType = 'fixed' as const;
+              updatedIqamahValue = rtdbVal.iqamah;
+            } else if ('iqamahValue' in rtdbVal && typeof rtdbVal.iqamahValue === 'string') {
+              updatedIqamahValue = rtdbVal.iqamahValue;
+              if ('iqamahType' in rtdbVal && typeof rtdbVal.iqamahType === 'string') {
+                updatedIqamahType = rtdbVal.iqamahType as any;
+              }
+            }
+          }
+        }
+
+        return {
+          ...p,
+          adhan: updatedAdhan,
+          iqamahType: updatedIqamahType,
+          iqamahValue: updatedIqamahValue
+        };
       }
       return p;
     });
+
+    // Handle Friday Jummah overrides
+    let overriddenJummah = baseResolved.jummah;
+    if (rtdbData.jummah) {
+      if (Array.isArray(rtdbData.jummah)) {
+        overriddenJummah = rtdbData.jummah;
+      } else if (typeof rtdbData.jummah === 'object') {
+        overriddenJummah = baseResolved.jummah.map(j => {
+          const rtdbSession = rtdbData.jummah[j.id];
+          if (rtdbSession) {
+            return {
+              ...j,
+              ...rtdbSession
+            };
+          }
+          return j;
+        });
+      }
+    } else if (rtdbData.jummah_1_khutbah || rtdbData.jummah_1_iqamah) {
+      overriddenJummah = baseResolved.jummah.map((j, idx) => {
+        const idx1 = idx + 1;
+        const kValue = rtdbData[`jummah_${idx1}_khutbah`];
+        const iValue = rtdbData[`jummah_${idx1}_iqamah`];
+        const nValue = rtdbData[`jummah_${idx1}_name`];
+        const sValue = rtdbData[`jummah_${idx1}_khateeb`];
+        return {
+          ...j,
+          khutbahTime: kValue !== undefined && kValue !== null ? String(kValue) : j.khutbahTime,
+          iqamahTime: iValue !== undefined && iValue !== null ? String(iValue) : j.iqamahTime,
+          name: nValue !== undefined && nValue !== null ? String(nValue) : j.name,
+          khateeb: sValue !== undefined && sValue !== null ? String(sValue) : j.khateeb,
+        };
+      });
+    }
 
     // Handle announcements
     let announcements = baseResolved.announcements;
@@ -757,9 +911,754 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return {
       ...baseResolved,
       prayers: overriddenPrayers,
+      jummah: overriddenJummah,
       announcements
     };
-  }, [data, resolvedPrayers, rtdbData, mosqueSlug]);
+  }, [data, currentCalcDate, rtdbData, mosqueSlug]);
+
+  // Memoized Subscription status calculation
+  const subscriptionInfo = React.useMemo(() => {
+    let status: 'trial' | 'basic' | 'standard' | 'premium' | 'expired' = 'trial';
+    let trialStartDate = '';
+    let expirationDate = '';
+    let packageType: 'None' | 'Basic' | 'Standard' | 'Premium' = 'None';
+
+    const cleanRtdbSlug = mosqueSlug ? mosqueSlug.replace(/[^a-zA-Z0-9]/g, '') : 'default';
+    const localKey = `sub_info_${cleanRtdbSlug}`;
+
+    if (rtdbData) {
+      status = rtdbData.subscriptionStatus || 'trial';
+      trialStartDate = rtdbData.trialStartDate || '';
+      expirationDate = rtdbData.expirationDate || '';
+      packageType = rtdbData.packageType || 'None';
+    } else {
+      const localCached = localStorage.getItem(localKey);
+      if (localCached) {
+        try {
+          const parsed = JSON.parse(localCached);
+          status = parsed.status || 'trial';
+          trialStartDate = parsed.trialStartDate || '';
+          expirationDate = parsed.expirationDate || '';
+          packageType = parsed.packageType || 'None';
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+
+    if (!trialStartDate || !expirationDate) {
+      const now = new Date();
+      trialStartDate = now.toISOString();
+      const exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30-day free trial
+      expirationDate = exp.toISOString();
+      status = 'trial';
+      packageType = 'None';
+
+      localStorage.setItem(localKey, JSON.stringify({
+        status,
+        trialStartDate,
+        expirationDate,
+        packageType
+      }));
+    }
+
+    const expTime = new Date(expirationDate).getTime();
+    const nowTime = Date.now();
+    const diffTime = expTime - nowTime;
+    const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (packageType === 'None' && (status === 'trial' || status === 'expired') && daysLeft <= 0) {
+      status = 'expired';
+    }
+
+    if (packageType !== 'None') {
+      status = packageType.toLowerCase() as any;
+    }
+
+    return {
+      status,
+      trialStartDate,
+      expirationDate,
+      packageType,
+      daysLeft: daysLeft > 0 ? daysLeft : 0
+    };
+  }, [rtdbData, mosqueSlug]);
+
+  const upgradeSubscription = async (plan: 'Basic' | 'Standard' | 'Premium') => {
+    if (!mosqueSlug) return;
+    const cleanRtdbSlug = mosqueSlug.replace(/[^a-zA-Z0-9]/g, '');
+    const localKey = `sub_info_${cleanRtdbSlug}`;
+
+    const now = new Date();
+    const exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days active limit
+    const updatedSub = {
+      subscriptionStatus: plan.toLowerCase() as any,
+      trialStartDate: subscriptionInfo.trialStartDate || now.toISOString(),
+      expirationDate: exp.toISOString(),
+      packageType: plan
+    };
+
+    localStorage.setItem(localKey, JSON.stringify({
+      status: plan.toLowerCase(),
+      trialStartDate: updatedSub.trialStartDate,
+      expirationDate: updatedSub.expirationDate,
+      packageType: plan
+    }));
+
+    if (isFirebaseEnabled && rtdb) {
+      try {
+        const rtdbRef = ref(rtdb, `mosques/${cleanRtdbSlug}`);
+        await update(rtdbRef, updatedSub);
+      } catch (err) {
+        console.error("Realtime database upgrade failed:", err);
+      }
+    } else {
+      setRtdbData((prev: any) => ({
+        ...prev,
+        ...updatedSub
+      }));
+    }
+  };
+
+  const simulateExpiration = async () => {
+    if (!mosqueSlug) return;
+    const cleanRtdbSlug = mosqueSlug.replace(/[^a-zA-Z0-9]/g, '');
+    const localKey = `sub_info_${cleanRtdbSlug}`;
+
+    const now = new Date();
+    const pastStart = new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000);
+    const pastExp = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+
+    const updatedSub = {
+      subscriptionStatus: 'expired' as const,
+      trialStartDate: pastStart.toISOString(),
+      expirationDate: pastExp.toISOString(),
+      packageType: 'None' as const
+    };
+
+    localStorage.setItem(localKey, JSON.stringify({
+      status: 'expired',
+      trialStartDate: updatedSub.trialStartDate,
+      expirationDate: updatedSub.expirationDate,
+      packageType: 'None'
+    }));
+
+    if (isFirebaseEnabled && rtdb) {
+      try {
+        const rtdbRef = ref(rtdb, `mosques/${cleanRtdbSlug}`);
+        await update(rtdbRef, updatedSub);
+      } catch (err) {
+        console.error("Realtime database status change failed:", err);
+      }
+    } else {
+      setRtdbData((prev: any) => ({
+        ...prev,
+        ...updatedSub
+      }));
+    }
+  };
+
+  const simulateResetTrial = async () => {
+    if (!mosqueSlug) return;
+    const cleanRtdbSlug = mosqueSlug.replace(/[^a-zA-Z0-9]/g, '');
+    const localKey = `sub_info_${cleanRtdbSlug}`;
+
+    const now = new Date();
+    const futureExp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const updatedSub = {
+      subscriptionStatus: 'trial' as const,
+      trialStartDate: now.toISOString(),
+      expirationDate: futureExp.toISOString(),
+      packageType: 'None' as const
+    };
+
+    localStorage.setItem(localKey, JSON.stringify({
+      status: 'trial',
+      trialStartDate: updatedSub.trialStartDate,
+      expirationDate: updatedSub.expirationDate,
+      packageType: 'None'
+    }));
+
+    if (isFirebaseEnabled && rtdb) {
+      try {
+        const rtdbRef = ref(rtdb, `mosques/${cleanRtdbSlug}`);
+        await update(rtdbRef, updatedSub);
+      } catch (err) {
+        console.error("Realtime database reset failed:", err);
+      }
+    } else {
+      setRtdbData((prev: any) => ({
+        ...prev,
+        ...updatedSub
+      }));
+    }
+  };
+
+  // ==========================================
+  // MOSQUE SAAS CORE IMPLEMENTATIONS
+  // ==========================================
+
+  const submitRegistration = async (fields: {
+    mosqueName: string;
+    managerName: string;
+    email: string;
+    phone: string;
+    city: string;
+    country: string;
+    address: string;
+  }): Promise<boolean> => {
+    const regId = `reg_${Date.now()}`;
+    const newReg = {
+      id: regId,
+      ...fields,
+      status: 'Pending Approval' as const,
+      createdAt: new Date().toISOString()
+    };
+
+    if (isFirebaseEnabled && db) {
+      try {
+        await setDoc(doc(db, 'mosqueRegistrations', regId), newReg);
+        return true;
+      } catch (err) {
+        console.error("Firebase registration submit error:", err);
+      }
+    }
+
+    // Always fallback/cache in Local Storage
+    const cachedRegs = JSON.parse(localStorage.getItem('mosque_registrations') || '[]');
+    cachedRegs.push(newReg);
+    localStorage.setItem('mosque_registrations', JSON.stringify(cachedRegs));
+    return true;
+  };
+
+  const getRegistrations = async (): Promise<any[]> => {
+    if (isFirebaseEnabled && db) {
+      try {
+        const colRef = collection(db, 'mosqueRegistrations');
+        const querySnapshot = await getDocs(colRef);
+        const list: any[] = [];
+        querySnapshot.forEach(doc => {
+          list.push(doc.data());
+        });
+        if (list.length > 0) return list;
+      } catch (err) {
+        console.error("Firebase fetch registrations error:", err);
+      }
+    }
+
+    // Local fallback
+    return JSON.parse(localStorage.getItem('mosque_registrations') || '[]');
+  };
+
+  const updateRegistrationStatus = async (
+    regId: string,
+    status: 'Approved' | 'Rejected',
+    plan: string = 'trial'
+  ): Promise<any> => {
+    let targetReg: any = null;
+
+    // 1. Fetch registration
+    if (isFirebaseEnabled && db) {
+      try {
+        const colRef = collection(db, 'mosqueRegistrations');
+        const querySnapshot = await getDocs(colRef);
+        querySnapshot.forEach(doc => {
+          const d = doc.data();
+          if (d.id === regId) {
+            targetReg = d;
+          }
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    if (!targetReg) {
+      const cachedRegs = JSON.parse(localStorage.getItem('mosque_registrations') || '[]');
+      targetReg = cachedRegs.find((r: any) => r.id === regId);
+    }
+
+    if (!targetReg) {
+      throw new Error("Registration form request not found.");
+    }
+
+    // Update status locally & remotely
+    targetReg.status = status;
+    
+    if (isFirebaseEnabled && db) {
+      try {
+        await setDoc(doc(db, 'mosqueRegistrations', regId), targetReg);
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      const cachedRegs = JSON.parse(localStorage.getItem('mosque_registrations') || '[]');
+      const updated = cachedRegs.map((r: any) => r.id === regId ? targetReg : r);
+      localStorage.setItem('mosque_registrations', JSON.stringify(updated));
+    }
+
+    if (status === 'Approved') {
+      // 2. Generate unique mosque code & temporary password
+      const prefix = targetReg.mosqueName.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5).padEnd(5, 'X');
+      const numCode = Math.floor(100 + Math.random() * 900);
+      const mCode = `${prefix}${numCode}`;
+      const mPass = Math.floor(100000 + Math.random() * 899999).toString();
+
+      // Define standard slug
+      const slug = targetReg.mosqueName.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+
+      // Check if slug is taken, otherwise add unique index
+      let finalSlug = slug;
+      if (allMosques.some(m => m.slug === finalSlug)) {
+        finalSlug = `${slug}-${numCode}`;
+      }
+
+      // Initialize the real mosque's Firestore syncData
+      const now = new Date();
+      const trialEndDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      
+      const newConfigObj = {
+        ...initialSyncData.config,
+        name: targetReg.mosqueName,
+        city: targetReg.city,
+        country: targetReg.country,
+        address: targetReg.address,
+        contactPhone: targetReg.phone,
+        managerName: targetReg.imamName,
+        managerEmail: targetReg.email,
+        mosqueCode: mCode,
+        adminPassword: mPass,
+        subscriptionPlan: plan as any,
+        trialStartDate: now.toISOString(),
+        trialEndDate: trialEndDate.toISOString(),
+        approvalStatus: 'Approved' as const
+      };
+
+      const newMosqueData: SyncData = {
+        ...initialSyncData,
+        config: newConfigObj,
+        lastUpdated: now.toISOString()
+      };
+
+      // Create in Firestore
+      if (isFirebaseEnabled && db) {
+        try {
+          await setDoc(doc(db, FIRESTORE_COLLECTION, finalSlug), newMosqueData);
+          
+          // Store in approved mosqueAdmins collection
+          await setDoc(doc(db, 'mosqueAdmins', targetReg.email.toLowerCase()), {
+            mosqueId: finalSlug,
+            adminEmail: targetReg.email.toLowerCase(),
+            approvalStatus: 'Approved',
+            subscriptionPlan: plan
+          });
+          
+          // Also set up default entry in RTDB
+          if (rtdb) {
+            const cleanRtdbSlug = finalSlug.replace(/[^a-zA-Z0-9]/g, '');
+            await set(ref(rtdb, `mosques/${cleanRtdbSlug}`), {
+              subscriptionStatus: plan,
+              trialStartDate: now.toISOString(),
+              expirationDate: trialEndDate.toISOString(),
+              packageType: plan === 'trial' ? 'None' : (plan.charAt(0).toUpperCase() + plan.slice(1))
+            });
+          }
+        } catch (err) {
+          console.error("Error creating approved mosque data:", err);
+        }
+      }
+
+      // Store approved admin cache locally
+      const cachedAdmins = JSON.parse(localStorage.getItem('mosque_approved_admins') || '{}');
+      cachedAdmins[targetReg.email.toLowerCase()] = {
+        mosqueId: finalSlug,
+        adminEmail: targetReg.email.toLowerCase(),
+        approvalStatus: 'Approved',
+        subscriptionPlan: plan
+      };
+      localStorage.setItem('mosque_approved_admins', JSON.stringify(cachedAdmins));
+
+      // Always save to offline backup dictionary
+      const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
+      offlineDict[finalSlug] = newMosqueData;
+      localStorage.setItem('mosque_offline_dict', JSON.stringify(offlineDict));
+
+      // Refresh directory list
+      await refreshAllMosques();
+
+      return { code: mCode, pass: mPass };
+    }
+
+    return null;
+  };
+
+  const checkEmailApproved = async (email: string): Promise<{ isApproved: boolean; slug?: string; subscriptionPlan?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    
+    // Fallback dictionary search first (offline)
+    const offlineDict = JSON.parse(localStorage.getItem('mosque_offline_dict') || '{}');
+    let foundSlug = '';
+    let foundPlan = 'trial';
+    
+    // Check locally in cache
+    Object.keys(offlineDict).forEach(slug => {
+      const mosqueDataObj = offlineDict[slug] as SyncData;
+      if (mosqueDataObj && mosqueDataObj.config && mosqueDataObj.config.managerEmail) {
+        if (mosqueDataObj.config.managerEmail.trim().toLowerCase() === cleanEmail) {
+          foundSlug = slug;
+          foundPlan = mosqueDataObj.config.subscriptionPlan || 'trial';
+        }
+      }
+    });
+
+    // Check pre-approved local admins list
+    const cachedAdmins = JSON.parse(localStorage.getItem('mosque_approved_admins') || '{}');
+    if (cachedAdmins[cleanEmail]) {
+      foundSlug = cachedAdmins[cleanEmail].mosqueId;
+      foundPlan = cachedAdmins[cleanEmail].subscriptionPlan || 'trial';
+    }
+
+    // Default development bypass: if user email is antakajunior3@gmail.com and we don't have any matching mosque slug yet,
+    // let's default to the current active mosqueSlug, or first available slug, or 'london-central'!
+    if (cleanEmail === 'antakajunior3@gmail.com' && !foundSlug) {
+      foundSlug = mosqueSlug || 'london-central';
+      foundPlan = 'premium';
+    }
+
+    // Now if online and firebase is enabled, query Firestore for the definitive answer
+    if (isFirebaseEnabled && db) {
+      try {
+        // A. Check in mosqueAdmins collection
+        const { getDoc } = await import('firebase/firestore');
+        const adminDocRef = doc(db, 'mosqueAdmins', cleanEmail);
+        const adminDocSnap = await getDoc(adminDocRef);
+        if (adminDocSnap.exists()) {
+          const adminDocData = adminDocSnap.data();
+          if (adminDocData && adminDocData.approvalStatus === 'Approved') {
+            return {
+              isApproved: true,
+              slug: adminDocData.mosqueId,
+              subscriptionPlan: adminDocData.subscriptionPlan || 'trial'
+            };
+          }
+        }
+
+        // B. Check in mosqueData configs
+        const colRef = collection(db, FIRESTORE_COLLECTION);
+        const querySnapshot = await getDocs(colRef);
+        let fbSlug = '';
+        let fbPlan = 'trial';
+        querySnapshot.forEach(docSnap => {
+          const docData = docSnap.data() as SyncData;
+          if (docData && docData.config && docData.config.managerEmail) {
+            if (docData.config.managerEmail.trim().toLowerCase() === cleanEmail) {
+              fbSlug = docSnap.id;
+              fbPlan = docData.config.subscriptionPlan || 'trial';
+            }
+          }
+        });
+
+        if (fbSlug) {
+          return {
+            isApproved: true,
+            slug: fbSlug,
+            subscriptionPlan: fbPlan
+          };
+        }
+      } catch (err) {
+        console.error("Firestore approved email check failed:", err);
+      }
+    }
+
+    // If cache search succeeded, return it
+    if (foundSlug) {
+      return {
+        isApproved: true,
+        slug: foundSlug,
+        subscriptionPlan: foundPlan as any
+      };
+    }
+
+    return { isApproved: false };
+  };
+
+  const requestLoginOTP = async (email: string): Promise<{ success: boolean; error?: string; code?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    
+    // 1. Verify email belongs to an approved mosque admin
+    const checkResult = await checkEmailApproved(cleanEmail);
+    if (!checkResult.isApproved || !checkResult.slug) {
+      return { 
+        success: false, 
+        error: "This email address is not authorized or approved as a Mosque Administrator." 
+      };
+    }
+
+    // 2. Generate a secure 6-digit numeric verification code
+    const generatedCode = Math.floor(100000 + Math.random() * 899999).toString();
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes expiration
+
+    // 3. Store OTP in database/local storage
+    const otpRecord = {
+      email: cleanEmail,
+      code: generatedCode,
+      createdAt: createdAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      mosqueId: checkResult.slug,
+      approvalStatus: 'Approved',
+      subscriptionPlan: checkResult.subscriptionPlan || 'trial',
+      used: false
+    };
+
+    // Storing in Firestore if enabled
+    if (isFirebaseEnabled && db) {
+      try {
+        // Save to 'mosqueLoginOTPs' collection indexed by email
+        await setDoc(doc(db, 'mosqueLoginOTPs', cleanEmail), otpRecord);
+      } catch (err) {
+        console.error("Failed to write login OTP record to Firestore:", err);
+      }
+    }
+
+    // Always store in local storage dictionary as well for seamless offline compatibility!
+    const localOTPs = JSON.parse(localStorage.getItem('mosque_login_otps') || '{}');
+    localOTPs[cleanEmail] = otpRecord;
+    localStorage.setItem('mosque_login_otps', JSON.stringify(localOTPs));
+
+    return { 
+      success: true, 
+      code: generatedCode 
+    };
+  };
+
+  const verifyLoginOTP = async (email: string, enteredCode: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = enteredCode.trim();
+
+    let otpRecord: any = null;
+
+    // Load from Firestore if online
+    if (isFirebaseEnabled && db) {
+      try {
+        const { getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'mosqueLoginOTPs', cleanEmail);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          otpRecord = docSnap.data();
+        }
+      } catch (err) {
+        console.error("Error fetching login OTP from Firestore:", err);
+      }
+    }
+
+    // Load from local storage fallback
+    if (!otpRecord) {
+      const localOTPs = JSON.parse(localStorage.getItem('mosque_login_otps') || '{}');
+      otpRecord = localOTPs[cleanEmail];
+    }
+
+    if (!otpRecord) {
+      return { success: false, error: "No OTP was requested for this email. Please request a new code." };
+    }
+
+    // Security Checks:
+    // 1. Correct code check
+    if (otpRecord.code !== cleanCode) {
+      return { success: false, error: "Invalid verification code. Please check and try again." };
+    }
+
+    // 2. Already used check
+    if (otpRecord.used) {
+      return { success: false, error: "This verification code has already been used. Please request a new one." };
+    }
+
+    // 3. Expiration check (10 minutes)
+    const expiresAt = new Date(otpRecord.expiresAt);
+    const now = new Date();
+    if (now.getTime() > expiresAt.getTime()) {
+      return { success: false, error: "This code has expired. OTPs are only valid for 10 minutes. Please request a new code." };
+    }
+
+    // Mark OTP as used securely to prevent replay attacks
+    otpRecord.used = true;
+    if (isFirebaseEnabled && db) {
+      try {
+        await setDoc(doc(db, 'mosqueLoginOTPs', cleanEmail), otpRecord);
+      } catch (err) {
+        console.error("Error setting OTP as used in Firestore:", err);
+      }
+    }
+    const localOTPs = JSON.parse(localStorage.getItem('mosque_login_otps') || '{}');
+    localOTPs[cleanEmail] = otpRecord;
+    localStorage.setItem('mosque_login_otps', JSON.stringify(localOTPs));
+
+    // Sign in the user securely using Firebase Authentication
+    if (isFirebaseEnabled && auth) {
+      try {
+        await signInAnonymously(auth);
+      } catch (err) {
+        console.error("Firebase Auth sign in failed during OTP verification:", err);
+      }
+    }
+
+    // Double check email is approved one more time immediately prior to session creation
+    const checkResult = await checkEmailApproved(cleanEmail);
+    if (!checkResult.isApproved || !checkResult.slug) {
+      return { success: false, error: "This email address is not authorized." };
+    }
+
+    // Log the user into their mosque dashboard session
+    const session = { email: cleanEmail, slug: checkResult.slug };
+    setMosqueAdmin(session);
+    localStorage.setItem('mosque_admin_session', JSON.stringify(session));
+
+    // Store in admin database collection if online
+    if (isFirebaseEnabled && db) {
+      try {
+        await setDoc(doc(db, 'mosqueAdmins', cleanEmail), {
+          mosqueId: checkResult.slug,
+          adminEmail: cleanEmail,
+          approvalStatus: 'Approved',
+          subscriptionPlan: checkResult.subscriptionPlan || 'trial'
+        });
+      } catch (err) {
+        console.error("Error storing session record in mosqueAdmins:", err);
+      }
+    }
+
+    // In-memory check and write to local list
+    const cachedAdmins = JSON.parse(localStorage.getItem('mosque_approved_admins') || '{}');
+    cachedAdmins[cleanEmail] = {
+      mosqueId: checkResult.slug,
+      adminEmail: cleanEmail,
+      approvalStatus: 'Approved',
+      subscriptionPlan: checkResult.subscriptionPlan || 'trial'
+    };
+    localStorage.setItem('mosque_approved_admins', JSON.stringify(cachedAdmins));
+
+    // Navigate to that specific mosque dashboard slug
+    setMosqueSlug(checkResult.slug);
+    window.history.pushState({}, '', `/${checkResult.slug}`);
+
+    return { success: true };
+  };
+
+  const loginMosqueAdmin = async (code: string, pass: string): Promise<boolean> => {
+    console.warn("Legacy credentials login call. Fails by default.");
+    return false;
+  };
+
+  const logoutMosqueAdmin = () => {
+    setMosqueAdmin(null);
+    localStorage.removeItem('mosque_admin_session');
+    setMosqueSlug('');
+    window.history.pushState({}, '', '/');
+  };
+
+  const saveManualPrayerTimes = async (
+    automaticCalculationEnabled: boolean,
+    updatedPrayers: PrayerTime[],
+    updatedJummah: JummahSession[]
+  ) => {
+    if (!mosqueSlug) return;
+    const cleanRtdbSlug = mosqueSlug.replace(/[^a-zA-Z0-9]/g, '');
+
+    // 1. Maintain Firestore config and local state
+    const nextConfig = {
+      ...data.config,
+      useCalculatedTimes: automaticCalculationEnabled
+    };
+    await saveState({
+      ...data,
+      config: nextConfig,
+      prayers: updatedPrayers,
+      jummah: updatedJummah
+    });
+
+    // 2. Synchronize to Firebase Realtime Database
+    if (isFirebaseEnabled && rtdb) {
+      try {
+        const rtdbRef = ref(rtdb, `mosques/${cleanRtdbSlug}`);
+        const updates: Record<string, any> = {
+          automaticCalculationEnabled,
+          name: data.config.name,
+          city: data.config.city,
+          mosqueAddress: data.config.address,
+          latitude: data.config.latitude,
+          longitude: data.config.longitude,
+        };
+
+        updatedPrayers.forEach(p => {
+          const pId = p.id;
+          updates[`${pId}_adhan`] = p.adhan;
+          if (pId !== 'sunrise') {
+            updates[`${pId}_iqamah`] = p.iqamahValue;
+            updates[`${pId}_iqamahValue`] = p.iqamahValue;
+            updates[`${pId}_iqamahType`] = p.iqamahType;
+            updates[pId] = {
+              adhan: p.adhan,
+              time: p.adhan,
+              iqamah: p.iqamahValue,
+              iqamahValue: p.iqamahValue,
+              iqamahType: p.iqamahType
+            };
+          } else {
+            updates[pId] = p.adhan;
+          }
+        });
+
+        updates.jummah = updatedJummah;
+        updatedJummah.forEach((j, idx) => {
+          updates[`jummah_${idx + 1}_name`] = j.name;
+          updates[`jummah_${idx + 1}_khutbah`] = j.khutbahTime;
+          updates[`jummah_${idx + 1}_iqamah`] = j.iqamahTime;
+          updates[`jummah_${idx + 1}_khateeb`] = j.khateeb;
+        });
+
+        await update(rtdbRef, updates);
+      } catch (err) {
+        console.error("Failed to update Firebase Realtime Database:", err);
+      }
+    } else {
+      // Offline fallback: update local rtdbData simulated state
+      const simulatedRtdbUpdates: Record<string, any> = {
+        automaticCalculationEnabled,
+      };
+      updatedPrayers.forEach(p => {
+        const pId = p.id;
+        simulatedRtdbUpdates[`${pId}_adhan`] = p.adhan;
+        if (pId !== 'sunrise') {
+          simulatedRtdbUpdates[`${pId}_iqamah`] = p.iqamahValue;
+          simulatedRtdbUpdates[`${pId}_iqamahValue`] = p.iqamahValue;
+          simulatedRtdbUpdates[`${pId}_iqamahType`] = p.iqamahType;
+          simulatedRtdbUpdates[pId] = {
+            adhan: p.adhan,
+            time: p.adhan,
+            iqamah: p.iqamahValue,
+            iqamahValue: p.iqamahValue,
+            iqamahType: p.iqamahType
+          };
+        } else {
+          simulatedRtdbUpdates[pId] = p.adhan;
+        }
+      });
+      updatedJummah.forEach((j, idx) => {
+        simulatedRtdbUpdates[`jummah_${idx + 1}_name`] = j.name;
+        simulatedRtdbUpdates[`jummah_${idx + 1}_khutbah`] = j.khutbahTime;
+        simulatedRtdbUpdates[`jummah_${idx + 1}_iqamah`] = j.iqamahTime;
+        simulatedRtdbUpdates[`jummah_${idx + 1}_khateeb`] = j.khateeb;
+      });
+      setRtdbData((prev: any) => ({
+        ...prev,
+        ...simulatedRtdbUpdates
+      }));
+    }
+  };
 
   return (
     <DashboardContext.Provider
@@ -787,10 +1686,29 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updateJummah,
         updateConfig,
         addAnnouncement,
+        updateAnnouncement,
         toggleAnnouncement,
         deleteAnnouncement,
         addQuote,
-        deleteQuote
+        updateQuote,
+        deleteQuote,
+        saveManualPrayerTimes,
+
+        subscription: subscriptionInfo,
+        upgradeSubscription,
+        simulateExpiration,
+        simulateResetTrial,
+
+        // Mosque SaaS Systems Integration
+        isSuperAdmin,
+        mosqueAdmin,
+        submitRegistration,
+        getRegistrations,
+        updateRegistrationStatus,
+        requestLoginOTP,
+        verifyLoginOTP,
+        loginMosqueAdmin,
+        logoutMosqueAdmin
       }}
     >
       {children}
